@@ -40,7 +40,11 @@ export default function Dashboard({ navigate }) {
   const fetchRuns = async () => {
     try {
       const res = await axios.get(`${BASE}/runs`);
-      setRuns(res.data);
+      // Some servers may return an array or an object wrapper; normalize to an array
+      const data = res && res.data ? res.data : [];
+      if (Array.isArray(data)) setRuns(data);
+      else if (data.runs && Array.isArray(data.runs)) setRuns(data.runs);
+      else setRuns([]);
     } catch (e) {
       console.error(e);
     } finally {

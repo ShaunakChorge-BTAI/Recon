@@ -15,7 +15,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 connect_args = {}
 
 if not DATABASE_URL:
-    pg_url = "postgresql+psycopg2://postgres:postgres@localhost:5432/recon_db"
+    pg_url = "postgresql+psycopg2://recon:recon@192.168.202.135:5432/recon_db"
     try:
         temp_engine = create_engine(pg_url, pool_pre_ping=True)
         with temp_engine.connect() as conn:
