@@ -7,6 +7,7 @@ from sqlalchemy.sql import func
 
 import os
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import text
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -163,3 +164,24 @@ class ExcludeRecord(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+    # Ensure existing DB has the `mapping_json` column in `history_table`.
+    # SQLAlchemy `create_all` does not add new columns to existing tables,
+    # so run a lightweight check-and-alter to add the column when missing.
+    try:
+        from sqlalchemy import inspect
+        insp = inspect(engine)
+        cols = [c['name'] for c in insp.get_columns('history_table')] if 'history_table' in insp.get_table_names() else []
+        if 'mapping_json' not in cols:
+            with engine.begin() as conn:
+                if engine.dialect.name == 'sqlite':
+                    # SQLite: add as TEXT (JSON stored as text)
+                    conn.execute(text("ALTER TABLE history_table ADD COLUMN mapping_json TEXT"))
+                else:
+                    # Postgres and others: use JSON column
+                    conn.execute(text("ALTER TABLE history_table ADD COLUMN mapping_json JSON"))
+                # No need to commit; engine.begin() context commits on success
+    except Exception:
+        # Best-effort migration on startup; log but don't fail server start
+        import traceback
+        traceback.print_exc()

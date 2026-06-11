@@ -12,3 +12,4 @@ httpx
 requests
 matplotlib
 numpy
+python-dotenv
