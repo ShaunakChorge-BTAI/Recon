@@ -10,9 +10,15 @@ import TestRun from "./pages/TestRun";
 export default function App() {
   const [page, setPage] = useState("dashboard");
   const [selectedRunId, setSelectedRunId] = useState(null);
+  const [mappingJson, setMappingJson] = useState(null);
 
   const navigate = (p, extras = {}) => {
     if (extras.runId !== undefined) setSelectedRunId(extras.runId);
+    if (extras.mapping_json !== undefined) {
+      setMappingJson(extras.mapping_json);
+    } else if (p === "new-run") {
+      setMappingJson(null); // Clear it if navigating normally
+    }
     setPage(p);
   };
 
@@ -42,7 +48,7 @@ export default function App() {
           {page === "dashboard" && <Dashboard navigate={navigate} />}
           {page === "history" && <History navigate={navigate} />}
           {page === "run-detail" && <RunDetail runId={selectedRunId} navigate={navigate} />}
-          {page === "new-run" && <NewRun navigate={navigate} />}
+          {page === "new-run" && <NewRun navigate={navigate} initialMapping={mappingJson} />}
           {page === "test-run" && <TestRun navigate={navigate} />}
         </div>
       </div>

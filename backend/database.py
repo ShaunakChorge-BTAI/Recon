@@ -7,6 +7,9 @@ from sqlalchemy.sql import func
 
 import os
 from sqlalchemy.exc import OperationalError
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB_PATH = os.path.normpath(os.path.join(BASE_DIR, "recon.db"))
@@ -80,6 +83,9 @@ class HistoryTable(Base):
     # File info
     source_filename = Column(String, nullable=True)
     dest_filename = Column(String, nullable=True)
+
+    # Saved mapping
+    mapping_json = Column(JSON, nullable=True)
 
     # Tolerance settings
     tol_amount = Column(Numeric(18, 4), nullable=False)

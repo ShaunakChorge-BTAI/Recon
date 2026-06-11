@@ -6,6 +6,9 @@ import time
 import uuid
 import asyncio
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import pandas as pd
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, WebSocket, WebSocketDisconnect
@@ -262,6 +265,14 @@ def ingest_mapped(
             db.commit()
             logger.info(f"[ingest] {side} inserted {len(db_rows)} records")
 
+            with open("logs.txt", "a") as f:
+                f.write(f"\n\n=== {side.upper()} DATAFRAME ===\n")
+                f.write(pd.DataFrame(records).to_string() + "\n")
+
+        # Clear logs.txt
+        with open("logs.txt", "w") as f:
+            f.write(f"--- Ingestion Mapped Data at {datetime.now()} ---\n")
+
         ingest_one(source_upload_id, "source")
         ingest_one(dest_upload_id, "dest")
 
@@ -503,6 +514,7 @@ def reconcile_async(
             date_mode=mapping_dict.get("date_mode", "datetime"),
             date_format=mapping_dict.get("date_format"),
             status="running",
+            mapping_json=mapping_dict,
         )
         db.add(run)
         db.commit()
@@ -575,6 +587,13 @@ async def test_reconcile(
 
         src_df = recs_to_df(src_records)
         dest_df = recs_to_df(dest_records)
+
+        with open("logs.txt", "w") as f:
+            f.write(f"--- Test Reconcile at {datetime.now()} ---\n")
+            f.write(f"\n\n=== SOURCE DATAFRAME ===\n")
+            f.write(src_df.to_string() + "\n")
+            f.write(f"\n\n=== DEST DATAFRAME ===\n")
+            f.write(dest_df.to_string() + "\n")
 
         engine = MatchingEngine(tol_amount, tol_time, mapping_dict)
         result = engine.run_all_layers(src_df, dest_df, skip_llm=True)
@@ -697,6 +716,7 @@ def get_run(run_id: int):
                 "total_duration_sec": run.total_duration_sec or 0,
                 "created_at": run.created_at.isoformat() if run.created_at else None,
                 "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                "mapping_json": run.mapping_json,
             },
             "reconciled": reconciled_rows,
         }

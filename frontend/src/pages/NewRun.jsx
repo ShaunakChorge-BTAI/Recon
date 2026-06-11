@@ -100,16 +100,42 @@ function StepUpload({ onDone }) {
 }
 
 // Step 2: Column Mapping
-function StepMapping({ uploadData, onDone }) {
+function StepMapping({ uploadData, onDone, initialMapping }) {
   const { source_columns: srcCols, dest_columns: destCols } = uploadData;
 
-  const [mapping, setMapping] = useState({
+  const defaultMapping = {
     source: { datetime: "", amount: "", references: [] },
     dest: { datetime: "", amount: "", references: [] },
     date_mode: "datetime",
     date_format: "",
-  });
+  };
+
+  const [mapping, setMapping] = useState(initialMapping || defaultMapping);
   const [error, setError] = useState("");
+
+  const handleSaveTemplate = () => {
+    const name = prompt("Enter a name for this mapping template:");
+    if (!name) return;
+    const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
+    templates[name] = mapping;
+    localStorage.setItem("reconTemplates", JSON.stringify(templates));
+    alert("Template saved!");
+  };
+
+  const handleLoadTemplate = () => {
+    const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
+    const names = Object.keys(templates);
+    if (names.length === 0) {
+      alert("No templates saved yet.");
+      return;
+    }
+    const name = prompt(`Enter template name to load:\n${names.join(", ")}`);
+    if (name && templates[name]) {
+      setMapping(templates[name]);
+    } else if (name) {
+      alert("Template not found.");
+    }
+  };
 
   const toggleRef = (side, col) => {
     setMapping((prev) => {
@@ -200,7 +226,17 @@ function StepMapping({ uploadData, onDone }) {
 
   return (
     <div>
-      <div className="section-title">Step 2 — Column Mapping</div>
+      <div className="section-title" style={{ display: "flex", justifyContent: "space-between" }}>
+        <span>Step 2 — Column Mapping</span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-outline btn-sm" onClick={handleLoadTemplate}>
+            📂 Load Template
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={handleSaveTemplate}>
+            💾 Save Template
+          </button>
+        </div>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <ColMap side="source" cols={srcCols} label="Source File" />
@@ -440,7 +476,7 @@ function StepTracking({ runId, onViewResults }) {
 }
 
 // Main NewRun Page
-export default function NewRun({ navigate }) {
+export default function NewRun({ navigate, initialMapping }) {
   const [step, setStep] = useState(1);
   const [uploadData, setUploadData] = useState(null);
   const [mapping, setMapping] = useState(null);
@@ -506,7 +542,7 @@ export default function NewRun({ navigate }) {
       {error && <div className="alert alert-red" style={{ marginBottom: 16 }}>{error}</div>}
 
       {step === 1 && <StepUpload onDone={handleUploadDone} />}
-      {step === 2 && uploadData && <StepMapping uploadData={uploadData} onDone={handleMappingDone} />}
+      {step === 2 && uploadData && <StepMapping uploadData={uploadData} onDone={handleMappingDone} initialMapping={initialMapping} />}
       {step === 3 && mapping && (
         <StepTolerances mapping={mapping} onDone={handleRunStart} />
       )}

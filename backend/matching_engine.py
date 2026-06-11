@@ -5,10 +5,12 @@ import re
 import time
 
 import httpx
+import os
 import numpy as np
 import pandas as pd
+# pyrefly: ignore [missing-import]
 from rapidfuzz.process import extractOne
-
+    
 
 class MatchingEngine:
     def __init__(self, tol_amount, tol_time, mapping):
@@ -142,7 +144,7 @@ Return [] if no match.
     # - sum(amount) == 0
     # ============================================================
     def layer0_self_knock(self, df: pd.DataFrame):
-
+        logging.info(f"Layer 0 (Self Knock) started with {len(df)} rows")
         group_cols = self.src_refs + ["datetime"]
 
         df_clean = self._prepare_df(df, self.src_refs)
@@ -177,7 +179,7 @@ Return [] if no match.
     # Returns flattened row-level matches with _x / _y
     # ============================================================
     def layer1_exact(self, src: pd.DataFrame, dest: pd.DataFrame):
-
+        logging.info(f"Layer 1 (Exact Match) started | src: {len(src)} dest: {len(dest)}")
         src_work = self._prepare_df(src, self.src_refs)
         dest_work = self._prepare_df(dest, self.dest_refs)
 
@@ -231,7 +233,7 @@ Return [] if no match.
     # - binary search amount window
     # ============================================================
     def layer2_tolerance(self, src: pd.DataFrame, dest: pd.DataFrame):
-
+        logging.info(f"Layer 2 (Tolerance) started | src: {len(src)} dest: {len(dest)} | amt_tol: {self.tol_amount} time_tol_min: {self.tol_time_minutes}")
         src_work = self._prepare_df(src, self.src_refs)
         dest_work = self._prepare_df(dest, self.dest_refs)
 
@@ -310,7 +312,7 @@ Return [] if no match.
     # - expand only matched buckets
     # ============================================================
     def layer3_subset(self, src: pd.DataFrame, dest: pd.DataFrame):
-
+        logging.info(f"Layer 3 (Subset) started | src: {len(src)} dest: {len(dest)}")
         src_work = self._prepare_df(src, self.src_refs)
         dest_work = self._prepare_df(dest, self.dest_refs)
 
@@ -354,7 +356,7 @@ Return [] if no match.
         for ref_key, grp in d.groupby(cols, observed=True, sort=False):
             ref_key = self._normalize_ref_key(ref_key)
             grp_sorted = grp.sort_values("datetime").reset_index(drop=True).copy()
-            grp_sorted["_dt_ns"] = grp_sorted["datetime"].astype("int64")
+            grp_sorted["_dt_ns"] = grp_sorted["datetime"].astype("datetime64[ns]").astype("int64")
             dest_group_map[ref_key] = grp_sorted
 
         tol_ns = self.tol_time.value
@@ -444,7 +446,7 @@ Return [] if no match.
     # - batch source processing
     # ============================================================
     def layer4_fuzzy(self, src: pd.DataFrame, dest: pd.DataFrame):
-
+        logging.info(f"Layer 4 (Fuzzy) started | src: {len(src)} dest: {len(dest)}")
         src_cols = [c for c in self.src_refs if c in src.columns]
         dest_cols = [c for c in self.dest_refs if c in dest.columns]
 
@@ -672,10 +674,13 @@ Return [] if no match.
                 try:
                     attempt += 1
 
+                    llm_url = os.environ.get("LLM_URL", "https://ollama.osourceglobal.com:11434/api/generate")
+                    llm_model = os.environ.get("LLM_MODEL", "qwen2.5:14b")
+
                     res = await client.post(
-                        "https://ollama.osourceglobal.com:11434/api/generate",
+                        llm_url,
                         json={
-                            "model": "qwen2.5:14b",
+                            "model": llm_model,
                             "prompt": prompt,
                             "stream": False
                         }

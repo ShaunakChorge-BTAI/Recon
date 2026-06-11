@@ -124,6 +124,19 @@ export default function History({ navigate }) {
                       >
                         View
                       </button>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        style={{ marginLeft: 6, borderColor: "var(--primary)", color: "var(--primary)" }}
+                        onClick={() => {
+                          if (!run.mapping_json) {
+                            alert("No mapping found for this run.");
+                            return;
+                          }
+                          navigate("new-run", { mapping_json: run.mapping_json });
+                        }}
+                      >
+                        Rerun
+                      </button>
                     </td>
                   </tr>
                 ))}
