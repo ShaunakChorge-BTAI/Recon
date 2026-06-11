@@ -146,7 +146,11 @@ export default function History({ navigate }) {
                             alert("No mapping found for this run.");
                             return;
                           }
-                          navigate("new-run", { mapping_json: run.mapping_json });
+                          navigate("new-run", {
+                            mapping_json: run.mapping_json,
+                            source_upload_id: run.source_upload_id,
+                            dest_upload_id: run.dest_upload_id,
+                          });
                         }}
                       >
                         Edit & Rerun

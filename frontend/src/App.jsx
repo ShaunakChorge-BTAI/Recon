@@ -11,13 +11,19 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [mappingJson, setMappingJson] = useState(null);
+  const [sourceUploadId, setSourceUploadId] = useState(null);
+  const [destUploadId, setDestUploadId] = useState(null);
 
   const navigate = (p, extras = {}) => {
     if (extras.runId !== undefined) setSelectedRunId(extras.runId);
     if (extras.mapping_json !== undefined) {
       setMappingJson(extras.mapping_json);
+      setSourceUploadId(extras.source_upload_id || null);
+      setDestUploadId(extras.dest_upload_id || null);
     } else if (p === "new-run") {
-      setMappingJson(null); // Clear it if navigating normally
+      setMappingJson(null);
+      setSourceUploadId(null);
+      setDestUploadId(null);
     }
     setPage(p);
   };
@@ -48,7 +54,14 @@ export default function App() {
           {page === "dashboard" && <Dashboard navigate={navigate} />}
           {page === "history" && <History navigate={navigate} />}
           {page === "run-detail" && <RunDetail runId={selectedRunId} navigate={navigate} />}
-          {page === "new-run" && <NewRun navigate={navigate} initialMapping={mappingJson} />}
+          {page === "new-run" && (
+            <NewRun
+              navigate={navigate}
+              initialMapping={mappingJson}
+              initialSourceUploadId={sourceUploadId}
+              initialDestUploadId={destUploadId}
+            />
+          )}
           {page === "test-run" && <TestRun navigate={navigate} />}
         </div>
       </div>

@@ -116,6 +116,7 @@ export default function TestRun() {
     if (!mapping.source.references.length || !mapping.dest.references.length) { setError("Select at least one Reference."); return; }
 
     setLoading(true);
+    setUploadProgress(0);
     setCleaningProgress(0);
     let interval;
     try {
@@ -131,7 +132,13 @@ export default function TestRun() {
       fd.append("tol_amount", tolAmount);
       fd.append("tol_time", timeInMinutes);
 
-      const res = await axios.post(`${BASE}/test-reconcile`, fd);
+      const res = await axios.post(`${BASE}/test-reconcile`, fd, {
+        onUploadProgress: (e) => {
+          if (e.total) {
+            setUploadProgress(Math.round((100 * e.loaded) / e.total));
+          }
+        }
+      });
       clearInterval(interval);
       setCleaningProgress(100);
       setResults(res.data);
@@ -213,35 +220,32 @@ export default function TestRun() {
             </button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          {[
-            { side: "source", cols: uploadData.source_columns, label: "Source Mapping" },
-            { side: "dest", cols: uploadData.dest_columns, label: "Destination Mapping" },
-          ].map(({ side, cols, label }) => (
-            <div className="card" key={side}>
+            {/* Source Mapping Card */}
+            <div className="card">
               <div className="card-header">
-                <span className="card-title">{label}</span>
+                <span className="card-title">Source Mapping</span>
               </div>
               <div className="card-body">
                 <div className="form-group">
                   <label className="form-label">DateTime</label>
-                  <select className="form-select" value={mapping[side].datetime} onChange={(e) => handleChange(side, "datetime", e.target.value)}>
+                  <select className="form-select" value={mapping.source.datetime} onChange={(e) => handleChange("source", "datetime", e.target.value)}>
                     <option value="">— Select —</option>
-                    {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {uploadData.source_columns.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Amount</label>
-                  <select className="form-select" value={mapping[side].amount} onChange={(e) => handleChange(side, "amount", e.target.value)}>
+                  <select className="form-select" value={mapping.source.amount} onChange={(e) => handleChange("source", "amount", e.target.value)}>
                     <option value="">— Select —</option>
-                    {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {uploadData.source_columns.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
                   <label className="form-label">References</label>
                   <div className="checkbox-group">
-                    {cols.map((c) => (
+                    {uploadData.source_columns.map((c) => (
                       <label key={c} className="checkbox-item">
-                        <input type="checkbox" checked={mapping[side].references.includes(c)} onChange={() => toggleRef(side, c)} />
+                        <input type="checkbox" checked={mapping.source.references.includes(c)} onChange={() => toggleRef("source", c)} />
                         {c}
                       </label>
                     ))}
@@ -249,7 +253,41 @@ export default function TestRun() {
                 </div>
               </div>
             </div>
-          ))}
+
+            {/* Destination Mapping Card */}
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">Destination Mapping</span>
+              </div>
+              <div className="card-body">
+                <div className="form-group">
+                  <label className="form-label">DateTime</label>
+                  <select className="form-select" value={mapping.dest.datetime} onChange={(e) => handleChange("dest", "datetime", e.target.value)}>
+                    <option value="">— Select —</option>
+                    {uploadData.dest_columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Amount</label>
+                  <select className="form-select" value={mapping.dest.amount} onChange={(e) => handleChange("dest", "amount", e.target.value)}>
+                    <option value="">— Select —</option>
+                    {uploadData.dest_columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">References</label>
+                  <div className="checkbox-group">
+                    {uploadData.dest_columns.map((c) => (
+                      <label key={c} className="checkbox-item">
+                        <input type="checkbox" checked={mapping.dest.references.includes(c)} onChange={() => toggleRef("dest", c)} />
+                        {c}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

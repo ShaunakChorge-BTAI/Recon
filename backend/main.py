@@ -632,6 +632,9 @@ def list_runs():
                 "source_filename": r.source_filename,
                 "dest_filename": r.dest_filename,
                 "status": r.status,
+                "source_upload_id": r.source_upload_id,
+                "dest_upload_id": r.dest_upload_id,
+                "mapping_json": r.mapping_json,
                 "tol_amount": float(r.tol_amount) if r.tol_amount else 0,
                 "tol_time_minutes": r.tol_time_minutes,
                 "date_mode": r.date_mode,
@@ -658,6 +661,19 @@ def list_runs():
         return result
     finally:
         db.close()
+
+
+@app.get("/uploads/{upload_id}/columns")
+def get_upload_columns(upload_id: int):
+    db = SessionLocal()
+    try:
+        rec = db.query(UploadedFile).filter(UploadedFile.id == upload_id).first()
+        if not rec:
+            return JSONResponse(status_code=404, content={"error": "Upload not found"})
+        return {"columns": rec.detected_columns, "filename": rec.filename}
+    finally:
+        db.close()
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

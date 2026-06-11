@@ -211,63 +211,113 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        {[
-          { side: "source", cols: srcCols, label: "Source File" },
-          { side: "dest", cols: destCols, label: "Destination File" },
-        ].map(({ side, cols, label }) => (
-          <div className="card" key={side}>
-            <div className="card-header">
-              <span style={{ fontSize: 14 }}>{side === "source" ? "📥" : "📤"}</span>
-              <span className="card-title">{label}</span>
+        {/* Source File */}
+        <div className="card">
+          <div className="card-header">
+            <span style={{ fontSize: 14 }}>📥</span>
+            <span className="card-title">Source File</span>
+          </div>
+          <div className="card-body">
+            <div className="form-group">
+              <label className="form-label">📅 DateTime Column</label>
+              <select
+                className="form-select"
+                value={mapping.source.datetime}
+                onChange={(e) => handleChange("source", "datetime", e.target.value)}
+              >
+                <option value="">— Select —</option>
+                {srcCols.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-            <div className="card-body">
-              <div className="form-group">
-                <label className="form-label">📅 DateTime Column</label>
-                <select
-                  className="form-select"
-                  value={mapping[side].datetime}
-                  onChange={(e) => handleChange(side, "datetime", e.target.value)}
-                >
-                  <option value="">— Select —</option>
-                  {cols.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
 
-              <div className="form-group">
-                <label className="form-label">💰 Amount Column</label>
-                <select
-                  className="form-select"
-                  value={mapping[side].amount}
-                  onChange={(e) => handleChange(side, "amount", e.target.value)}
-                >
-                  <option value="">— Select —</option>
-                  {cols.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+            <div className="form-group">
+              <label className="form-label">💰 Amount Column</label>
+              <select
+                className="form-select"
+                value={mapping.source.amount}
+                onChange={(e) => handleChange("source", "amount", e.target.value)}
+              >
+                <option value="">— Select —</option>
+                {srcCols.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">🔗 Reference Columns (select all that apply)</label>
-                <div className="checkbox-group">
-                  {cols.map((c) => (
-                    <label key={c} className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={mapping[side].references.includes(c)}
-                        onChange={() => toggleRef(side, c)}
-                      />
-                      {c}
-                    </label>
-                  ))}
+            <div className="form-group">
+              <label className="form-label">🔗 Reference Columns (select all that apply)</label>
+              <div className="checkbox-group">
+                {srcCols.map((c) => (
+                  <label key={c} className="checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={mapping.source.references.includes(c)}
+                      onChange={() => toggleRef("source", c)}
+                    />
+                    {c}
+                  </label>
+                ))}
+              </div>
+              {mapping.source.references.length > 0 && (
+                <div className="helper-text" style={{ marginTop: 6 }}>
+                  Selected: {mapping.source.references.join(", ")}
                 </div>
-                {mapping[side].references.length > 0 && (
-                  <div className="helper-text" style={{ marginTop: 6 }}>
-                    Selected: {mapping[side].references.join(", ")}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
-        ))}
+        </div>
+
+        {/* Destination File */}
+        <div className="card">
+          <div className="card-header">
+            <span style={{ fontSize: 14 }}>📤</span>
+            <span className="card-title">Destination File</span>
+          </div>
+          <div className="card-body">
+            <div className="form-group">
+              <label className="form-label">📅 DateTime Column</label>
+              <select
+                className="form-select"
+                value={mapping.dest.datetime}
+                onChange={(e) => handleChange("dest", "datetime", e.target.value)}
+              >
+                <option value="">— Select —</option>
+                {destCols.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">💰 Amount Column</label>
+              <select
+                className="form-select"
+                value={mapping.dest.amount}
+                onChange={(e) => handleChange("dest", "amount", e.target.value)}
+              >
+                <option value="">— Select —</option>
+                {destCols.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">🔗 Reference Columns (select all that apply)</label>
+              <div className="checkbox-group">
+                {destCols.map((c) => (
+                  <label key={c} className="checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={mapping.dest.references.includes(c)}
+                      onChange={() => toggleRef("dest", c)}
+                    />
+                    {c}
+                  </label>
+                ))}
+              </div>
+              {mapping.dest.references.length > 0 && (
+                <div className="helper-text" style={{ marginTop: 6 }}>
+                  Selected: {mapping.dest.references.join(", ")}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Global settings */}
@@ -502,7 +552,7 @@ function StepTracking({ runId, onViewResults }) {
   );
 }
 
-export default function NewRun({ navigate, initialMapping }) {
+export default function NewRun({ navigate, initialMapping, initialSourceUploadId, initialDestUploadId }) {
   const [step, setStep] = useState(1);
   const [uploadData, setUploadData] = useState(null);
   const [mapping, setMapping] = useState(null);
@@ -516,6 +566,28 @@ export default function NewRun({ navigate, initialMapping }) {
       setMapping(initialMapping);
     }
   }, [initialMapping, step]);
+
+  // Fetch columns if upload IDs are already provided
+  useEffect(() => {
+    if (initialSourceUploadId && initialDestUploadId) {
+      const loadPreExistingCols = async () => {
+        try {
+          const res1 = await axios.get(`${BASE}/uploads/${initialSourceUploadId}/columns`);
+          const res2 = await axios.get(`${BASE}/uploads/${initialDestUploadId}/columns`);
+          setUploadData({
+            source_upload_id: initialSourceUploadId,
+            dest_upload_id: initialDestUploadId,
+            source_columns: res1.data.columns,
+            dest_columns: res2.data.columns,
+          });
+          setStep(2);
+        } catch (e) {
+          setError(e.response?.data?.error || e.message || "Failed to load columns for the previous run.");
+        }
+      };
+      loadPreExistingCols();
+    }
+  }, [initialSourceUploadId, initialDestUploadId]);
 
   const handleUploadDone = (data) => {
     setUploadData(data);
