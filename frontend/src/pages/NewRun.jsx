@@ -26,6 +26,7 @@ function StepUpload({ onDone }) {
   const [destFile, setDestFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const ACCEPT = ".xlsx,.xls,.csv,.txt,.pdf,.xml,.lin";
 
@@ -36,11 +37,19 @@ function StepUpload({ onDone }) {
     }
     setError("");
     setLoading(true);
+    setUploadProgress(0);
     try {
       const fd = new FormData();
       fd.append("source", srcFile);
       fd.append("dest", destFile);
-      const res = await axios.post(`${BASE}/upload`, fd);
+      const res = await axios.post(`${BASE}/upload`, fd, {
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(percentCompleted);
+          }
+        }
+      });
       if (res.data.error) throw new Error(res.data.error);
       onDone(res.data);
     } catch (e) {
@@ -90,9 +99,27 @@ function StepUpload({ onDone }) {
 
       {error && <div className="alert alert-red" style={{ marginBottom: 12 }}>{error}</div>}
 
+      {loading && uploadProgress > 0 && uploadProgress < 100 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
+            <span>Uploading files...</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: `${uploadProgress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {loading && uploadProgress === 100 && (
+        <div style={{ marginBottom: 16, fontSize: 13, color: "var(--text2)" }}>
+          ⟳ Reading columns...
+        </div>
+      )}
+
       {srcFile && destFile && (
         <button className="btn btn-blue" onClick={handleUpload} disabled={loading}>
-          {loading ? "⟳ Reading columns..." : "Done — Read Columns →"}
+          {loading ? "⟳ Processing..." : "Done — Read Columns →"}
         </button>
       )}
     </div>
@@ -169,61 +196,6 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
     onDone(mapping);
   };
 
-  const ColMap = ({ side, cols, label }) => (
-    <div className="card">
-      <div className="card-header">
-        <span style={{ fontSize: 14 }}>{side === "source" ? "📥" : "📤"}</span>
-        <span className="card-title">{label}</span>
-      </div>
-      <div className="card-body">
-        <div className="form-group">
-          <label className="form-label">📅 DateTime Column</label>
-          <select
-            className="form-select"
-            value={mapping[side].datetime}
-            onChange={(e) => handleChange(side, "datetime", e.target.value)}
-          >
-            <option value="">— Select —</option>
-            {cols.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">💰 Amount Column</label>
-          <select
-            className="form-select"
-            value={mapping[side].amount}
-            onChange={(e) => handleChange(side, "amount", e.target.value)}
-          >
-            <option value="">— Select —</option>
-            {cols.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">🔗 Reference Columns (select all that apply)</label>
-          <div className="checkbox-group">
-            {cols.map((c) => (
-              <label key={c} className="checkbox-item">
-                <input
-                  type="checkbox"
-                  checked={mapping[side].references.includes(c)}
-                  onChange={() => toggleRef(side, c)}
-                />
-                {c}
-              </label>
-            ))}
-          </div>
-          {mapping[side].references.length > 0 && (
-            <div className="helper-text" style={{ marginTop: 6 }}>
-              Selected: {mapping[side].references.join(", ")}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div>
       <div className="section-title" style={{ display: "flex", justifyContent: "space-between" }}>
@@ -239,8 +211,63 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        <ColMap side="source" cols={srcCols} label="Source File" />
-        <ColMap side="dest" cols={destCols} label="Destination File" />
+        {[
+          { side: "source", cols: srcCols, label: "Source File" },
+          { side: "dest", cols: destCols, label: "Destination File" },
+        ].map(({ side, cols, label }) => (
+          <div className="card" key={side}>
+            <div className="card-header">
+              <span style={{ fontSize: 14 }}>{side === "source" ? "📥" : "📤"}</span>
+              <span className="card-title">{label}</span>
+            </div>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">📅 DateTime Column</label>
+                <select
+                  className="form-select"
+                  value={mapping[side].datetime}
+                  onChange={(e) => handleChange(side, "datetime", e.target.value)}
+                >
+                  <option value="">— Select —</option>
+                  {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">💰 Amount Column</label>
+                <select
+                  className="form-select"
+                  value={mapping[side].amount}
+                  onChange={(e) => handleChange(side, "amount", e.target.value)}
+                >
+                  <option value="">— Select —</option>
+                  {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">🔗 Reference Columns (select all that apply)</label>
+                <div className="checkbox-group">
+                  {cols.map((c) => (
+                    <label key={c} className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={mapping[side].references.includes(c)}
+                        onChange={() => toggleRef(side, c)}
+                      />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+                {mapping[side].references.length > 0 && (
+                  <div className="helper-text" style={{ marginTop: 6 }}>
+                    Selected: {mapping[side].references.join(", ")}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Global settings */}
@@ -475,13 +502,20 @@ function StepTracking({ runId, onViewResults }) {
   );
 }
 
-// Main NewRun Page
 export default function NewRun({ navigate, initialMapping }) {
   const [step, setStep] = useState(1);
   const [uploadData, setUploadData] = useState(null);
   const [mapping, setMapping] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [error, setError] = useState("");
+  const [cleaningProgress, setCleaningProgress] = useState(-1);
+
+  // Update mapping if initialMapping changes
+  useEffect(() => {
+    if (initialMapping && step <= 2) {
+      setMapping(initialMapping);
+    }
+  }, [initialMapping, step]);
 
   const handleUploadDone = (data) => {
     setUploadData(data);
@@ -495,13 +529,22 @@ export default function NewRun({ navigate, initialMapping }) {
 
   const handleRunStart = async ({ tolAmount, tolTime, mapping: mappingData }) => {
     setError("");
+    setCleaningProgress(0);
+    let interval;
     try {
+      interval = setInterval(() => {
+        setCleaningProgress((p) => (p < 90 ? p + Math.floor(Math.random() * 15) : p));
+      }, 600);
+
       // 1. Ingest
       const ingestFd = new FormData();
       ingestFd.append("source_upload_id", uploadData.source_upload_id);
       ingestFd.append("dest_upload_id", uploadData.dest_upload_id);
       ingestFd.append("mapping", JSON.stringify(mappingData));
       await axios.post(`${BASE}/ingest-mapped`, ingestFd);
+
+      clearInterval(interval);
+      setCleaningProgress(100);
 
       // 2. Start reconciliation
       const reconFd = new FormData();
@@ -513,7 +556,10 @@ export default function NewRun({ navigate, initialMapping }) {
       const res = await axios.post(`${BASE}/reconcile_async`, reconFd);
       setJobId(res.data.job_id);
       setStep(4);
+      setCleaningProgress(-1);
     } catch (e) {
+      if (interval) clearInterval(interval);
+      setCleaningProgress(-1);
       setError(e.response?.data?.error || e.message || "Failed to start reconciliation");
     }
   };
@@ -546,6 +592,21 @@ export default function NewRun({ navigate, initialMapping }) {
       {step === 3 && mapping && (
         <StepTolerances mapping={mapping} onDone={handleRunStart} />
       )}
+
+      {cleaningProgress >= 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div className="card-body">
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
+              <span>{cleaningProgress < 100 ? "Cleaning and ingesting data..." : "Done!"}</span>
+              <span>{cleaningProgress}%</span>
+            </div>
+            <div className="progress-bar">
+              <div className="progress-fill" style={{ width: `${cleaningProgress}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {step === 4 && jobId && (
         <StepTracking
           runId={jobId}

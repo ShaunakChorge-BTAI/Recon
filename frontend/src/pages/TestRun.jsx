@@ -36,6 +36,9 @@ export default function TestRun() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState("");
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [cleaningProgress, setCleaningProgress] = useState(-1);
+
   const ACCEPT = ".xlsx,.xls,.csv,.txt,.pdf,.xml,.lin";
 
   const handleUpload = async () => {
@@ -45,11 +48,18 @@ export default function TestRun() {
     }
     setError("");
     setLoading(true);
+    setUploadProgress(0);
     try {
       const fd = new FormData();
       fd.append("source", srcFile);
       fd.append("dest", destFile);
-      const res = await axios.post(`${BASE}/upload`, fd);
+      const res = await axios.post(`${BASE}/upload`, fd, {
+        onUploadProgress: (e) => {
+          if (e.total) {
+            setUploadProgress(Math.round((100 * e.loaded) / e.total));
+          }
+        }
+      });
       if (res.data.error) throw new Error(res.data.error);
       setUploadData(res.data);
     } catch (e) {
@@ -57,6 +67,30 @@ export default function TestRun() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLoadTemplate = () => {
+    const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
+    const names = Object.keys(templates);
+    if (names.length === 0) {
+      alert("No templates saved yet.");
+      return;
+    }
+    const name = prompt(`Enter template name to load:\n${names.join(", ")}`);
+    if (name && templates[name]) {
+      setMapping(templates[name]);
+    } else if (name) {
+      alert("Template not found.");
+    }
+  };
+
+  const handleSaveTemplate = () => {
+    const name = prompt("Enter a name for this mapping template:");
+    if (!name) return;
+    const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
+    templates[name] = mapping;
+    localStorage.setItem("reconTemplates", JSON.stringify(templates));
+    alert("Template saved!");
   };
 
   const toggleRef = (side, col) => {
@@ -82,7 +116,13 @@ export default function TestRun() {
     if (!mapping.source.references.length || !mapping.dest.references.length) { setError("Select at least one Reference."); return; }
 
     setLoading(true);
+    setCleaningProgress(0);
+    let interval;
     try {
+      interval = setInterval(() => {
+        setCleaningProgress((p) => (p < 90 ? p + Math.floor(Math.random() * 15) : p));
+      }, 600);
+
       const timeInMinutes = tolUnit === "days" ? tolTime * 24 * 60 : Number(tolTime);
       const fd = new FormData();
       fd.append("source", srcFile);
@@ -92,8 +132,13 @@ export default function TestRun() {
       fd.append("tol_time", timeInMinutes);
 
       const res = await axios.post(`${BASE}/test-reconcile`, fd);
+      clearInterval(interval);
+      setCleaningProgress(100);
       setResults(res.data);
+      setCleaningProgress(-1);
     } catch (e) {
+      if (interval) clearInterval(interval);
+      setCleaningProgress(-1);
       setError(e.response?.data?.error || e.message || "Test failed");
     } finally {
       setLoading(false);
@@ -129,6 +174,25 @@ export default function TestRun() {
               </div>
             </div>
           </div>
+          
+          {loading && uploadProgress > 0 && uploadProgress < 100 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
+                <span>Uploading files...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          )}
+
+          {loading && uploadProgress === 100 && !uploadData && (
+            <div style={{ marginBottom: 16, fontSize: 13, color: "var(--text2)" }}>
+              ⟳ Reading columns...
+            </div>
+          )}
+
           {srcFile && destFile && !uploadData && (
             <button className="btn btn-outline" onClick={handleUpload} disabled={loading}>
               {loading ? "⟳ Reading..." : "Read Columns"}
@@ -139,7 +203,16 @@ export default function TestRun() {
 
       {/* Column Mapping */}
       {uploadData && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+            <button className="btn btn-outline btn-sm" onClick={handleLoadTemplate}>
+              📂 Load Template
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={handleSaveTemplate}>
+              💾 Save Template
+            </button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           {[
             { side: "source", cols: uploadData.source_columns, label: "Source Mapping" },
             { side: "dest", cols: uploadData.dest_columns, label: "Destination Mapping" },
@@ -225,6 +298,20 @@ export default function TestRun() {
         <button className="btn btn-blue" onClick={handleRun} disabled={loading} style={{ fontSize: 14 }}>
           {loading ? "⟳ Running test..." : "⚡ Run Test Reconciliation"}
         </button>
+      )}
+
+      {cleaningProgress >= 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div className="card-body">
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
+              <span>{cleaningProgress < 100 ? "Cleaning and ingesting data..." : "Done!"}</span>
+              <span>{cleaningProgress}%</span>
+            </div>
+            <div className="progress-bar">
+              <div className="progress-fill" style={{ width: `${cleaningProgress}%` }} />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Results */}

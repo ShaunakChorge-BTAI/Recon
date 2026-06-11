@@ -12,6 +12,7 @@ export default function History({ navigate }) {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [selectedMapping, setSelectedMapping] = useState(null);
 
   useEffect(() => {
     fetchRuns();
@@ -126,6 +127,19 @@ export default function History({ navigate }) {
                       </button>
                       <button
                         className="btn btn-outline btn-sm"
+                        style={{ marginLeft: 6, borderColor: "var(--purple)", color: "var(--purple)" }}
+                        onClick={() => {
+                          if (!run.mapping_json) {
+                            alert("No mapping found for this run.");
+                            return;
+                          }
+                          setSelectedMapping(run.mapping_json);
+                        }}
+                      >
+                        Mappings
+                      </button>
+                      <button
+                        className="btn btn-outline btn-sm"
                         style={{ marginLeft: 6, borderColor: "var(--primary)", color: "var(--primary)" }}
                         onClick={() => {
                           if (!run.mapping_json) {
@@ -135,7 +149,7 @@ export default function History({ navigate }) {
                           navigate("new-run", { mapping_json: run.mapping_json });
                         }}
                       >
-                        Rerun
+                        Edit & Rerun
                       </button>
                     </td>
                   </tr>
@@ -145,6 +159,45 @@ export default function History({ navigate }) {
           </div>
         )}
       </div>
+
+      {/* Mapping Modal */}
+      {selectedMapping && (
+        <div className="modal-overlay" onClick={() => setSelectedMapping(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">
+              <span>View & Save Mapping</span>
+              <button className="btn btn-outline btn-sm" onClick={() => setSelectedMapping(null)}>X</button>
+            </div>
+            
+            <pre style={{ background: "var(--surface2)", padding: 16, borderRadius: 8, fontSize: 12, color: "var(--text2)", overflowX: "auto", marginBottom: 20 }}>
+              {JSON.stringify(selectedMapping, null, 2)}
+            </pre>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => setSelectedMapping(null)}
+              >
+                Close
+              </button>
+              <button
+                className="btn btn-green"
+                onClick={() => {
+                  const name = prompt("Enter a name for this mapping template:");
+                  if (!name) return;
+                  const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
+                  templates[name] = selectedMapping;
+                  localStorage.setItem("reconTemplates", JSON.stringify(templates));
+                  alert("Template saved!");
+                  setSelectedMapping(null);
+                }}
+              >
+                💾 Save as Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
