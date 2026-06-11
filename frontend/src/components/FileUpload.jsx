@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 
-const BASE = "http://localhost:8000";
+const BASE = "http://localhost:8001";
 
 export default function FileUpload({ onUploadComplete, uploading, setUploading }) {
   const [source, setSource] = useState(null);

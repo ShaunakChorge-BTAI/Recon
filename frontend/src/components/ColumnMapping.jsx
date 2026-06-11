@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
+import ProgressBar from "./ProgressBar";
 
-const BASE = "http://localhost:8000";
+const BASE = "http://localhost:8001";
 
 export default function ColumnMapping({
   sourceCols,
@@ -17,11 +18,26 @@ export default function ColumnMapping({
   const [tolAmount, setTolAmount] = useState(10);
   const [tolTime, setTolTime] = useState(10);
   const [loading, setLoading] = useState(false);
+  const [jobId, setJobId] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState("");
+
+  useEffect(() => {
+    if (jobId) {
+      const ws = new WebSocket(`ws://localhost:8001/ws/progress/${jobId}`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setProgress(data.progress);
+        setStatusMsg(data.status);
+      };
+      return () => ws.close();
+    }
+  }, [jobId]);
 
   const handleChange = (side, field, value) => {
     setMapping(prev => ({
       ...prev,
-      { ...prev[side], value }
+      [side]: { ...prev[side], [field]: value }
     }));
   };
 
@@ -29,13 +45,15 @@ export default function ColumnMapping({
     const values = Array.from(e.target.selectedOptions).map(o => o.value);
     setMapping(prev => ({
       ...prev,
-      { ...prev[side], references: values }
+      [side]: { ...prev[side], references: values }
     }));
   };
 
   const run = async () => {
     try {
       setLoading(true);
+      setStatusMsg("Saving mappings...");
+      setProgress(0);
 
       // 1) store mapped cols into postgres
       const ingestFd = new FormData();
@@ -46,17 +64,19 @@ export default function ColumnMapping({
       await axios.post(`${BASE}/ingest-mapped`, ingestFd);
 
       // 2) start reconciliation using DB data
+      setStatusMsg("Starting reconciliation engine...");
       const reconFd = new FormData();
       reconFd.append("source_upload_id", sourceUploadId);
       reconFd.append("dest_upload_id", destUploadId);
+      reconFd.append("mapping", JSON.stringify(mapping));
       reconFd.append("tol_amount", tolAmount);
       reconFd.append("tol_time", tolTime);
 
       const res = await axios.post(`${BASE}/reconcile_async`, reconFd);
-      console.log("Recon job:", res.data);
+      setJobId(res.data.job_id);
     } catch (err) {
       console.error(err);
-      alert("Failed to run reconciliation");
+      setStatusMsg("Failed to run reconciliation: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -114,6 +134,13 @@ export default function ColumnMapping({
       >
         {loading ? "Processing..." : "Run Reconciliation"}
       </button>
+
+      {statusMsg && (
+        <div className="mt-6">
+          <p className="text-sm font-medium mb-2">{statusMsg}</p>
+          <ProgressBar progress={progress} />
+        </div>
+      )}
     </div>
   );
 }

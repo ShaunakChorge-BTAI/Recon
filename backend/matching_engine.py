@@ -805,3 +805,178 @@ Return [] if no match.
                     })
 
         return rows
+
+    # ============================================================
+    # LAYER 0 — DEST SIDE SELF KNOCK
+    # Same logic as layer0_self_knock but applied to dest df
+    # ============================================================
+    def layer0_self_knock_dest(self, df: pd.DataFrame):
+        group_cols = self.dest_refs + ["datetime"]
+        df_clean = self._prepare_df(df, self.dest_refs)
+
+        if df_clean.empty:
+            return pd.DataFrame()
+
+        grp = df_clean.groupby(group_cols)["amount"]
+
+        size = grp.transform("size")
+        total = grp.transform("sum")
+        pos_count = grp.transform(lambda x: (x > 0).sum())
+        neg_count = grp.transform(lambda x: (x < 0).sum())
+
+        mask = (
+            (size == 2) &
+            (total.round(2) == 0) &
+            (pos_count == 1) &
+            (neg_count == 1)
+        )
+
+        return df_clean[mask].copy()
+
+    # ============================================================
+    # ORCHESTRATOR — run_all_layers
+    # Runs all layers in sequence, tracks timing, returns results
+    # ============================================================
+    def run_all_layers(
+        self,
+        src_df: pd.DataFrame,
+        dest_df: pd.DataFrame,
+        progress_callback=None,
+        skip_llm: bool = False,
+    ) -> dict:
+        """
+        Run all matching layers in sequence.
+
+        Returns:
+        {
+          "layers": {
+            "Self Knock": {"matches": DataFrame, "count": int, "time_sec": float},
+            "Exact Match": {...},
+            ...
+          },
+          "unmatched_src": DataFrame,
+          "unmatched_dest": DataFrame,
+          "total_matched": int,
+        }
+        """
+        import time
+
+        def push(msg, pct, extra=None):
+            if progress_callback:
+                payload = {"status": msg, "progress": pct}
+                if extra:
+                    payload.update(extra)
+                progress_callback(payload)
+
+        results = {}
+        src_work = src_df.copy()
+        dest_work = dest_df.copy()
+        total_matched = 0
+
+        def drop_matched_src(df, matches):
+            if matches.empty or "record_id_x" not in matches.columns:
+                return df
+            ids = matches["record_id_x"].dropna().tolist()
+            return df[~df["record_id"].isin(ids)]
+
+        def drop_matched_dest(df, matches):
+            if matches.empty or "record_id_y" not in matches.columns:
+                return df
+            ids = matches["record_id_y"].dropna().tolist()
+            return df[~df["record_id"].isin(ids)]
+
+        # ── Layer 0: Self Knock ───────────────────────────────
+        push("Running Layer 0: Self Knock...", 10)
+        t0 = time.time()
+        l0_src = self.layer0_self_knock(src_work)
+        l0_dest = self.layer0_self_knock_dest(dest_work)
+        # Combine: pairs within src and within dest
+        l0_combined = pd.concat([l0_src, l0_dest], ignore_index=True)
+        t0_time = round(time.time() - t0, 2)
+        count0 = len(l0_src) + len(l0_dest)
+        results["Self Knock"] = {"matches": l0_combined, "raw_src": l0_src, "raw_dest": l0_dest, "count": count0, "time_sec": t0_time}
+        # Remove self-knocked rows from further processing
+        if not l0_src.empty and "record_id" in l0_src.columns:
+            src_work = src_work[~src_work["record_id"].isin(l0_src["record_id"].tolist())]
+        if not l0_dest.empty and "record_id" in l0_dest.columns:
+            dest_work = dest_work[~dest_work["record_id"].isin(l0_dest["record_id"].tolist())]
+        total_matched += count0
+        push("Layer 0 done", 18, {"layer": "Self Knock", "count": count0, "time_sec": t0_time})
+
+        # ── Layer 1: Exact Match ──────────────────────────────
+        push("Running Layer 1: Exact Match...", 25)
+        t1 = time.time()
+        l1 = self.layer1_exact(src_work, dest_work)
+        t1_time = round(time.time() - t1, 2)
+        count1 = len(l1)
+        results["Exact Match"] = {"matches": l1, "count": count1, "time_sec": t1_time}
+        src_work = drop_matched_src(src_work, l1)
+        dest_work = drop_matched_dest(dest_work, l1)
+        total_matched += count1
+        push("Layer 1 done", 35, {"layer": "Exact Match", "count": count1, "time_sec": t1_time})
+
+        # ── Layer 2: Tolerance Match ──────────────────────────
+        push("Running Layer 2: Tolerance Match...", 42)
+        t2 = time.time()
+        l2 = self.layer2_tolerance(src_work, dest_work)
+        t2_time = round(time.time() - t2, 2)
+        count2 = len(l2)
+        results["Tolerance Match"] = {"matches": l2, "count": count2, "time_sec": t2_time}
+        src_work = drop_matched_src(src_work, l2)
+        dest_work = drop_matched_dest(dest_work, l2)
+        total_matched += count2
+        push("Layer 2 done", 52, {"layer": "Tolerance Match", "count": count2, "time_sec": t2_time})
+
+        # ── Layer 3: Subset Match ─────────────────────────────
+        push("Running Layer 3: Subset Match...", 58)
+        t3 = time.time()
+        l3 = self.layer3_subset(src_work, dest_work)
+        t3_time = round(time.time() - t3, 2)
+        count3 = len(l3)
+        results["Subset Match"] = {"matches": l3, "count": count3, "time_sec": t3_time}
+        src_work = drop_matched_src(src_work, l3)
+        dest_work = drop_matched_dest(dest_work, l3)
+        total_matched += count3
+        push("Layer 3 done", 68, {"layer": "Subset Match", "count": count3, "time_sec": t3_time})
+
+        # ── Layer 4: Fuzzy Match ──────────────────────────────
+        push("Running Layer 4: Fuzzy Match...", 74)
+        t4 = time.time()
+        l4 = self.layer4_fuzzy(src_work, dest_work)
+        t4_time = round(time.time() - t4, 2)
+        count4 = len(l4)
+        results["Fuzzy Match"] = {"matches": l4, "count": count4, "time_sec": t4_time}
+        src_work = drop_matched_src(src_work, l4)
+        dest_work = drop_matched_dest(dest_work, l4)
+        total_matched += count4
+        push("Layer 4 done", 83, {"layer": "Fuzzy Match", "count": count4, "time_sec": t4_time})
+
+        # ── Layer 5: LLM Match ────────────────────────────────
+        count5, t5_time = 0, 0.0
+        if not skip_llm:
+            push("Running Layer 5: LLM Match...", 88)
+            t5 = time.time()
+            try:
+                l5 = self.layer5_llm(src_work, dest_work)
+                t5_time = round(time.time() - t5, 2)
+                count5 = len(l5)
+                results["LLM Match"] = {"matches": l5, "count": count5, "time_sec": t5_time}
+                src_work = drop_matched_src(src_work, l5)
+                dest_work = drop_matched_dest(dest_work, l5)
+                total_matched += count5
+            except Exception as e:
+                logging.warning(f"Layer 5 (LLM) skipped: {e}")
+                results["LLM Match"] = {"matches": pd.DataFrame(), "count": 0, "time_sec": 0.0}
+            push("Layer 5 done", 95, {"layer": "LLM Match", "count": count5, "time_sec": t5_time})
+        else:
+            logging.info("Layer 5 (LLM) skipped — skip_llm=True")
+            results["LLM Match"] = {"matches": pd.DataFrame(), "count": 0, "time_sec": 0.0}
+
+        push("Reconciliation complete!", 100)
+
+        return {
+            "layers": results,
+            "unmatched_src": src_work,
+            "unmatched_dest": dest_work,
+            "total_matched": total_matched,
+        }

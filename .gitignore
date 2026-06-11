@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# SQLite DB files
+*.db-shm
+*.db-wal
+
+# Uploads & Temp files
+uploads/
+backend/uploads/
+*.csv
+*.xlsx
+*.xls
+frontend_backup/
+test_ui.py
