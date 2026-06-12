@@ -13,24 +13,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DB_PATH = os.path.normpath(os.path.join(BASE_DIR, "recon.db"))
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
-connect_args = {}
+# ──────────────────────────────────────────────────────────────────────────────
+# Database URL resolution — NO SQLite fallback.
+#
+# Priority:
+#   1. DATABASE_URL env var (explicit override)
+#   2. PostgreSQL at the configured host (PG_URL env var or hardcoded default)
+#
+# SQLite fallback has been completely removed to ensure consistency across
+# machines and prevent stale local data accumulation.
+# ──────────────────────────────────────────────────────────────────────────────
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 if not DATABASE_URL:
-    pg_url = "postgresql+psycopg2://recon:recon@192.168.202.135:5432/recon_db"
-    try:
-        temp_engine = create_engine(pg_url, pool_pre_ping=True)
-        with temp_engine.connect() as conn:
-            DATABASE_URL = pg_url
-        temp_engine.dispose()
-    except Exception:
-        DATABASE_URL = f"sqlite:///{DEFAULT_DB_PATH}"
+    # Use PostgreSQL exclusively
+    DATABASE_URL = os.environ.get(
+        "PG_URL",
+        "postgresql+psycopg2://recon:recon@192.168.202.135:5432/recon_db"
+    )
 
-if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-
+connect_args = {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -174,14 +178,7 @@ def init_db():
         cols = [c['name'] for c in insp.get_columns('history_table')] if 'history_table' in insp.get_table_names() else []
         if 'mapping_json' not in cols:
             with engine.begin() as conn:
-                if engine.dialect.name == 'sqlite':
-                    # SQLite: add as TEXT (JSON stored as text)
-                    conn.execute(text("ALTER TABLE history_table ADD COLUMN mapping_json TEXT"))
-                else:
-                    # Postgres and others: use JSON column
-                    conn.execute(text("ALTER TABLE history_table ADD COLUMN mapping_json JSON"))
-                # No need to commit; engine.begin() context commits on success
+                conn.execute(text("ALTER TABLE history_table ADD COLUMN mapping_json JSON"))
     except Exception:
-        # Best-effort migration on startup; log but don't fail server start
         import traceback
         traceback.print_exc()

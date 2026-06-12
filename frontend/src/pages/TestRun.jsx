@@ -4,10 +4,16 @@ import axios from "axios";
 const BASE = "http://localhost:8000";
 
 const DATE_FORMATS = [
+  { label: "Auto Detect", value: "" },
   { label: "DD/MM/YYYY", value: "%d/%m/%Y" },
   { label: "MM/DD/YYYY", value: "%m/%d/%Y" },
   { label: "YYYY-MM-DD", value: "%Y-%m-%d" },
-  { label: "Auto Detect", value: "" },
+  { label: "DD-MM-YYYY", value: "%d-%m-%Y" },
+  { label: "YYYY/MM/DD", value: "%Y/%m/%d" },
+  { label: "DD MMM YYYY", value: "%d %b %Y" },
+  { label: "DD/MM/YYYY HH:MM", value: "%d/%m/%Y %H:%M" },
+  { label: "MM/DD/YYYY HH:MM", value: "%m/%d/%Y %H:%M" },
+  { label: "YYYY-MM-DD HH:MM:SS", value: "%Y-%m-%d %H:%M:%S" },
 ];
 
 const LAYER_INFO = [
@@ -24,8 +30,8 @@ export default function TestRun() {
   const [destFile, setDestFile] = useState(null);
   const [uploadData, setUploadData] = useState(null);
   const [mapping, setMapping] = useState({
-    source: { datetime: "", amount: "", references: [] },
-    dest: { datetime: "", amount: "", references: [] },
+    source: { datetime: "", amount: "", references: [], date_format: "", date_mode: "datetime" },
+    dest: { datetime: "", amount: "", references: [], date_format: "", date_mode: "datetime" },
     date_mode: "datetime",
     date_format: "",
   });
@@ -251,6 +257,22 @@ export default function TestRun() {
                     ))}
                   </div>
                 </div>
+                <div className="form-group">
+                  <label className="form-label">📅 Date Mode (Source)</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {["date", "datetime"].map((m) => (
+                      <button key={m} className={`btn btn-sm ${(mapping.source.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`} onClick={() => handleChange("source", "date_mode", m)}>
+                        {m === "date" ? "📅 Date" : "🕐 Datetime"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">🗓️ Date Format (Source)</label>
+                  <select className="form-select" value={mapping.source.date_format || ""} onChange={(e) => handleChange("source", "date_format", e.target.value)}>
+                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -285,6 +307,22 @@ export default function TestRun() {
                     ))}
                   </div>
                 </div>
+                <div className="form-group">
+                  <label className="form-label">📅 Date Mode (Destination)</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {["date", "datetime"].map((m) => (
+                      <button key={m} className={`btn btn-sm ${(mapping.dest.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`} onClick={() => handleChange("dest", "date_mode", m)}>
+                        {m === "date" ? "📅 Date" : "🕐 Datetime"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">🗓️ Date Format (Destination)</label>
+                  <select className="form-select" value={mapping.dest.date_format || ""} onChange={(e) => handleChange("dest", "date_format", e.target.value)}>
+                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -295,23 +333,7 @@ export default function TestRun() {
       {uploadData && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-header"><span className="card-title">⚙️ Settings</span></div>
-          <div className="card-body" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-            <div className="form-group">
-              <label className="form-label">Date Mode</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["date", "datetime"].map((m) => (
-                  <button key={m} className={`btn btn-sm ${mapping.date_mode === m ? "btn-blue" : "btn-outline"}`} onClick={() => setMapping(p => ({ ...p, date_mode: m }))}>
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Date Format</label>
-              <select className="form-select" value={mapping.date_format} onChange={(e) => setMapping(p => ({ ...p, date_format: e.target.value }))}>
-                {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-              </select>
-            </div>
+          <div className="card-body" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             <div className="form-group">
               <label className="form-label">Amount Tolerance</label>
               <input className="form-input" type="number" min={0} value={tolAmount} onChange={(e) => setTolAmount(e.target.value)} />

@@ -14,10 +14,22 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
 
     Mapping structure:
     {
-      "source": {"datetime": "col", "amount": "col", "references": ["col1", ...]},
-      "dest":   {"datetime": "col", "amount": "col", "references": ["col1", ...]},
-      "date_mode": "date" | "datetime",   # optional, default "datetime"
-      "date_format": "%d/%m/%Y"           # optional, for ambiguous dates
+      "source": {
+          "datetime": "col",
+          "amount": "col",
+          "references": ["col1", ...],
+          "date_format": "%d/%m/%Y",   # optional, per-side override
+          "date_mode": "date"|"datetime"  # optional, per-side override
+      },
+      "dest": {
+          "datetime": "col",
+          "amount": "col",
+          "references": ["col1", ...],
+          "date_format": "%d/%m/%Y",   # optional, per-side override
+          "date_mode": "date"|"datetime"  # optional, per-side override
+      },
+      "date_mode": "date" | "datetime",   # global fallback, default "datetime"
+      "date_format": "%d/%m/%Y"           # global fallback, for ambiguous dates
     }
     """
     m = mapping[side]
@@ -26,8 +38,12 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
     amount_col = m["amount"]
     ref_cols = m.get("references", [])
 
-    date_mode = mapping.get("date_mode", "datetime")   # "date" or "datetime"
-    date_format = mapping.get("date_format", None)      # e.g. "%d/%m/%Y"
+    # Per-side date settings take priority over global settings
+    date_mode = m.get("date_mode") or mapping.get("date_mode", "datetime")
+    date_format = m.get("date_format") or mapping.get("date_format", None)
+    # Treat empty string as None (no format = auto-detect)
+    if not date_format:
+        date_format = None
 
     # All mapped columns
     all_mapped_cols = [date_col, amount_col] + ref_cols
@@ -80,7 +96,7 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
     # ── Drop rows where datetime or amount is null ─────────────────────────
     df = df.dropna(subset=["txn_datetime", "amount_clean"])
 
-    logger.info(f"[{side}] Cleaned rows: {len(df)}")
+    logger.info(f"[{side}] Cleaned rows: {len(df)} | date_mode={date_mode} | date_format={date_format or 'auto'}")
 
     # ── Build structured records ──────────────────────────────────────────
     records = []

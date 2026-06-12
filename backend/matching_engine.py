@@ -37,6 +37,7 @@ class MatchingEngine:
         - ignore seconds globally -> floor to minute
         - amount numeric
         - remove nulls in critical columns
+        - sort by record_id for DETERMINISTIC ordering (prevents hash/dict randomisation)
         """
         df = df.copy()
 
@@ -51,6 +52,15 @@ class MatchingEngine:
 
         if needed:
             df = df.dropna(subset=needed)
+
+        # Sort deterministically so results are consistent across runs and machines
+        sort_cols = []
+        if "record_id" in df.columns:
+            sort_cols.append("record_id")
+        elif "amount" in df.columns:
+            sort_cols.extend(["amount"])
+        if sort_cols:
+            df = df.sort_values(sort_cols).reset_index(drop=True)
 
         return df
 
@@ -409,6 +419,8 @@ Return [] if no match.
 
         # Expand matched grouped buckets to row-level
         final_rows = []
+        matched_src_ids = set()  # Track to avoid counting same source row twice
+        matched_dest_ids = set()  # Track to avoid counting same dest row twice
 
         for src_bucket_key, dest_bucket_key in matched_bucket_pairs:
             src_block = src_rows_by_bucket.get(src_bucket_key, [])
@@ -419,14 +431,26 @@ Return [] if no match.
 
             for s_row in src_block:
                 s_dict = s_row.to_dict()
+                s_id = s_dict.get("record_id")
 
                 for d_row in dest_block:
                     d_dict = d_row.to_dict()
+                    d_id = d_dict.get("record_id")
+
+                    # Skip if either side already matched in another bucket
+                    if s_id is not None and s_id in matched_src_ids:
+                        continue
+                    if d_id is not None and d_id in matched_dest_ids:
+                        continue
 
                     final_rows.append({
                         **{f"{k}_x": v for k, v in s_dict.items()},
                         **{f"{k}_y": v for k, v in d_dict.items()},
                     })
+                    if s_id is not None:
+                        matched_src_ids.add(s_id)
+                    if d_id is not None:
+                        matched_dest_ids.add(d_id)
 
         return pd.DataFrame(final_rows)
 
@@ -879,16 +903,34 @@ Return [] if no match.
         total_matched = 0
 
         def drop_matched_src(df, matches):
-            if matches.empty or "record_id_x" not in matches.columns:
+            if matches is None or matches.empty or "record_id" not in df.columns:
                 return df
-            ids = matches["record_id_x"].dropna().tolist()
+            if "record_id_x" in matches.columns:
+                ids = set(matches["record_id_x"].dropna().tolist())
+            elif "record_id" in matches.columns:
+                ids = set(matches["record_id"].dropna().tolist())
+            else:
+                return df
             return df[~df["record_id"].isin(ids)]
 
         def drop_matched_dest(df, matches):
-            if matches.empty or "record_id_y" not in matches.columns:
+            if matches is None or matches.empty or "record_id" not in df.columns:
                 return df
-            ids = matches["record_id_y"].dropna().tolist()
+            if "record_id_y" in matches.columns:
+                ids = set(matches["record_id_y"].dropna().tolist())
+            elif "record_id" in matches.columns:
+                ids = set(matches["record_id"].dropna().tolist())
+            else:
+                return df
             return df[~df["record_id"].isin(ids)]
+
+        def unique_src_count(matches):
+            """Count unique source records matched — not cross-product rows."""
+            if matches is None or matches.empty:
+                return 0
+            if "record_id_x" in matches.columns:
+                return int(matches["record_id_x"].dropna().nunique())
+            return len(matches)
 
         # ── Layer 0: Self Knock ───────────────────────────────
         push("Running Layer 0: Self Knock...", 10)
@@ -913,7 +955,7 @@ Return [] if no match.
         t1 = time.time()
         l1 = self.layer1_exact(src_work, dest_work)
         t1_time = round(time.time() - t1, 2)
-        count1 = len(l1)
+        count1 = unique_src_count(l1)
         results["Exact Match"] = {"matches": l1, "count": count1, "time_sec": t1_time}
         src_work = drop_matched_src(src_work, l1)
         dest_work = drop_matched_dest(dest_work, l1)
@@ -925,7 +967,7 @@ Return [] if no match.
         t2 = time.time()
         l2 = self.layer2_tolerance(src_work, dest_work)
         t2_time = round(time.time() - t2, 2)
-        count2 = len(l2)
+        count2 = unique_src_count(l2)
         results["Tolerance Match"] = {"matches": l2, "count": count2, "time_sec": t2_time}
         src_work = drop_matched_src(src_work, l2)
         dest_work = drop_matched_dest(dest_work, l2)
@@ -937,7 +979,7 @@ Return [] if no match.
         t3 = time.time()
         l3 = self.layer3_subset(src_work, dest_work)
         t3_time = round(time.time() - t3, 2)
-        count3 = len(l3)
+        count3 = unique_src_count(l3)
         results["Subset Match"] = {"matches": l3, "count": count3, "time_sec": t3_time}
         src_work = drop_matched_src(src_work, l3)
         dest_work = drop_matched_dest(dest_work, l3)
@@ -949,7 +991,7 @@ Return [] if no match.
         t4 = time.time()
         l4 = self.layer4_fuzzy(src_work, dest_work)
         t4_time = round(time.time() - t4, 2)
-        count4 = len(l4)
+        count4 = unique_src_count(l4)
         results["Fuzzy Match"] = {"matches": l4, "count": count4, "time_sec": t4_time}
         src_work = drop_matched_src(src_work, l4)
         dest_work = drop_matched_dest(dest_work, l4)
@@ -964,7 +1006,7 @@ Return [] if no match.
             try:
                 l5 = self.layer5_llm(src_work, dest_work)
                 t5_time = round(time.time() - t5, 2)
-                count5 = len(l5)
+                count5 = unique_src_count(l5)
                 results["LLM Match"] = {"matches": l5, "count": count5, "time_sec": t5_time}
                 src_work = drop_matched_src(src_work, l5)
                 dest_work = drop_matched_dest(dest_work, l5)

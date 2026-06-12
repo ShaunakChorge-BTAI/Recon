@@ -13,11 +13,16 @@ const LAYER_INFO = [
 ];
 
 const DATE_FORMATS = [
+  { label: "Auto Detect", value: "" },
   { label: "DD/MM/YYYY", value: "%d/%m/%Y" },
   { label: "MM/DD/YYYY", value: "%m/%d/%Y" },
   { label: "YYYY-MM-DD", value: "%Y-%m-%d" },
   { label: "DD-MM-YYYY", value: "%d-%m-%Y" },
-  { label: "Auto Detect", value: "" },
+  { label: "YYYY/MM/DD", value: "%Y/%m/%d" },
+  { label: "DD MMM YYYY", value: "%d %b %Y" },
+  { label: "DD/MM/YYYY HH:MM", value: "%d/%m/%Y %H:%M" },
+  { label: "MM/DD/YYYY HH:MM", value: "%m/%d/%Y %H:%M" },
+  { label: "YYYY-MM-DD HH:MM:SS", value: "%Y-%m-%d %H:%M:%S" },
 ];
 
 // Step 1: File Upload
@@ -131,8 +136,8 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
   const { source_columns: srcCols, dest_columns: destCols } = uploadData;
 
   const defaultMapping = {
-    source: { datetime: "", amount: "", references: [] },
-    dest: { datetime: "", amount: "", references: [] },
+    source: { datetime: "", amount: "", references: [], date_format: "", date_mode: "datetime" },
+    dest: { datetime: "", amount: "", references: [], date_format: "", date_mode: "datetime" },
     date_mode: "datetime",
     date_format: "",
   };
@@ -262,6 +267,34 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
                 </div>
               )}
             </div>
+
+            {/* Per-side date settings */}
+            <div className="form-group">
+              <label className="form-label">📅 Date Mode (Source)</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {["date", "datetime"].map((m) => (
+                  <button
+                    key={m}
+                    className={`btn btn-sm ${(mapping.source.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`}
+                    onClick={() => handleChange("source", "date_mode", m)}
+                  >
+                    {m === "date" ? "📅 Date Only" : "🕐 Date+Time"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">🗓️ Date Format (Source)</label>
+              <select
+                className="form-select"
+                value={mapping.source.date_format || ""}
+                onChange={(e) => handleChange("source", "date_format", e.target.value)}
+              >
+                {DATE_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -316,42 +349,74 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
                 </div>
               )}
             </div>
+
+            {/* Per-side date settings */}
+            <div className="form-group">
+              <label className="form-label">📅 Date Mode (Destination)</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {["date", "datetime"].map((m) => (
+                  <button
+                    key={m}
+                    className={`btn btn-sm ${(mapping.dest.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`}
+                    onClick={() => handleChange("dest", "date_mode", m)}
+                  >
+                    {m === "date" ? "📅 Date Only" : "🕐 Date+Time"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">🗓️ Date Format (Destination)</label>
+              <select
+                className="form-select"
+                value={mapping.dest.date_format || ""}
+                onChange={(e) => handleChange("dest", "date_format", e.target.value)}
+              >
+                {DATE_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Global settings */}
+      {/* Global date settings card replaced by per-side settings above */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">⚙️ Date Settings</span>
+          <span className="card-title">⚙️ Global Date Fallback (optional)</span>
         </div>
-        <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div className="form-group">
-            <label className="form-label">Date Type</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              {["date", "datetime"].map((m) => (
-                <button
-                  key={m}
-                  className={`btn btn-sm ${mapping.date_mode === m ? "btn-blue" : "btn-outline"}`}
-                  onClick={() => handleGlobal("date_mode", m)}
-                >
-                  {m === "date" ? "📅 Date" : "🕐 Datetime"}
-                </button>
-              ))}
-            </div>
+        <div className="card-body">
+          <div className="alert alert-blue" style={{ marginBottom: 12 }}>
+            ℹ️ Per-side settings above take priority. Use global settings as a fallback only.
           </div>
-
-          <div className="form-group">
-            <label className="form-label">Date Format</label>
-            <select
-              className="form-select"
-              value={mapping.date_format}
-              onChange={(e) => handleGlobal("date_format", e.target.value)}
-            >
-              {DATE_FORMATS.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="form-group">
+              <label className="form-label">Global Date Type</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["date", "datetime"].map((m) => (
+                  <button
+                    key={m}
+                    className={`btn btn-sm ${mapping.date_mode === m ? "btn-blue" : "btn-outline"}`}
+                    onClick={() => handleGlobal("date_mode", m)}
+                  >
+                    {m === "date" ? "📅 Date" : "🕐 Datetime"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Global Date Format</label>
+              <select
+                className="form-select"
+                value={mapping.date_format}
+                onChange={(e) => handleGlobal("date_format", e.target.value)}
+              >
+                {DATE_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -559,6 +624,7 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
   const [jobId, setJobId] = useState(null);
   const [error, setError] = useState("");
   const [cleaningProgress, setCleaningProgress] = useState(-1);
+  const [ingestTiming, setIngestTiming] = useState(null);
 
   // Update mapping if initialMapping changes
   useEffect(() => {
@@ -602,6 +668,7 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
   const handleRunStart = async ({ tolAmount, tolTime, mapping: mappingData }) => {
     setError("");
     setCleaningProgress(0);
+    setIngestTiming(null);
     let interval;
     try {
       interval = setInterval(() => {
@@ -613,10 +680,16 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
       ingestFd.append("source_upload_id", uploadData.source_upload_id);
       ingestFd.append("dest_upload_id", uploadData.dest_upload_id);
       ingestFd.append("mapping", JSON.stringify(mappingData));
-      await axios.post(`${BASE}/ingest-mapped`, ingestFd);
+      const ingestRes = await axios.post(`${BASE}/ingest-mapped`, ingestFd);
 
       clearInterval(interval);
+      interval = null;
       setCleaningProgress(100);
+
+      // Show real ingest timing from backend
+      if (ingestRes.data?.timing) {
+        setIngestTiming(ingestRes.data.timing);
+      }
 
       // 2. Start reconciliation
       const reconFd = new FormData();
@@ -669,15 +742,41 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
         <div className="card" style={{ marginTop: 20 }}>
           <div className="card-body">
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
-              <span>{cleaningProgress < 100 ? "Cleaning and ingesting data..." : "Done!"}</span>
-              <span>{cleaningProgress}%</span>
+              <span>{cleaningProgress < 100 ? "⟳ Cleaning and ingesting data..." : "✓ Ingest complete!"}</span>
+              <span style={{ fontWeight: 700, color: cleaningProgress === 100 ? "var(--green)" : "var(--primary)" }}>
+                {cleaningProgress}%
+              </span>
             </div>
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${cleaningProgress}%` }} />
+              <div className="progress-fill" style={{ width: `${cleaningProgress}%`, background: cleaningProgress === 100 ? "var(--green)" : undefined }} />
             </div>
+
+            {/* Show real per-side timing from backend */}
+            {ingestTiming && cleaningProgress === 100 && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
+                {["source", "dest"].map((side) => {
+                  const t = ingestTiming[side];
+                  if (!t) return null;
+                  return (
+                    <div key={side} style={{ background: "var(--surface2)", borderRadius: 8, padding: "10px 14px", border: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
+                        {side === "source" ? "📥 Source" : "📤 Destination"}
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--text2)" }}>
+                        <span style={{ color: "var(--primary)", fontWeight: 700 }}>{t.rows}</span> rows
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                        Read: {t.read_time_sec}s · Clean: {t.clean_time_sec}s · Total: {t.total_time_sec}s
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
+
 
       {step === 4 && jobId && (
         <StepTracking

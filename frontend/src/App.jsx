@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Sidebar from "./layout/Sidebar";
 import Topbar from "./layout/Topbar";
 import Dashboard from "./pages/Dashboard";
@@ -13,6 +13,19 @@ export default function App() {
   const [mappingJson, setMappingJson] = useState(null);
   const [sourceUploadId, setSourceUploadId] = useState(null);
   const [destUploadId, setDestUploadId] = useState(null);
+
+  // Dark mode state — persisted in localStorage
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("recon-theme") === "dark";
+  });
+
+  // Apply theme class to document root
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
+    localStorage.setItem("recon-theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
+
+  const toggleDark = () => setDarkMode((d) => !d);
 
   const navigate = (p, extras = {}) => {
     if (extras.runId !== undefined) setSelectedRunId(extras.runId);
@@ -48,6 +61,8 @@ export default function App() {
           sub={currentMeta.sub}
           navigate={navigate}
           page={page}
+          darkMode={darkMode}
+          toggleDark={toggleDark}
         />
 
         <div className="page-content">

@@ -22,3 +22,7 @@ backend/uploads/
 *.xls
 frontend_backup/
 test_ui.py
+
+*.db
+.env
+logs.txt
