@@ -386,8 +386,6 @@ export default function TestRun() {
             {LAYER_INFO.map((l) => {
               const d = results.layers?.[l.name];
               return (
-    <>
-      {showTemplatePicker && <TemplatePickerModal onLoad={(m) => setMapping(m)} onClose={() => setShowTemplatePicker(false)} />}
                 <div key={l.name} className={`layer-card${d && d.count > 0 ? " done" : ""}`}>
                   <div className="layer-card-name">{l.name}</div>
                   <div className="layer-card-count" style={{ color: d?.count > 0 ? l.color : "var(--text3)" }}>
