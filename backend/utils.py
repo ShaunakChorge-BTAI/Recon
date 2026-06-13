@@ -103,7 +103,14 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str, progress_
 
     # ── Build structured records ──────────────────────────────────────────
     records = []
-    for idx, row in df.iterrows():
+    total_len = len(df)
+    for i, (idx, row) in enumerate(df.iterrows()):
+        if progress_cb and i > 0 and i % 2000 == 0:
+            if side == "source":
+                progress_cb(f"Cleaning source data: {i}/{total_len}...", 10 + int((i/total_len)*20))
+            else:
+                progress_cb(f"Cleaning dest data: {i}/{total_len}...", 60 + int((i/total_len)*25))
+
         refs = {}
         for col in ref_cols:
             val = str(row[col]).strip()
