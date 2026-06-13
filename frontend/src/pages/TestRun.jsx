@@ -24,6 +24,122 @@ const LAYER_INFO = [
 // Replaces the old browser prompt() with a proper styled UI.
 // Shows all saved templates as clickable cards with load/delete/rename.
 
+function TemplatePickerModal({ onLoad, onClose }) {
+  const [templates, setTemplates] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("reconTemplates") || "{}"); }
+    catch { return {}; }
+  });
+  const [selected, setSelected] = useState(null);
+  const [renaming, setRenaming] = useState(null); // name being renamed
+  const [newName, setNewName] = useState("");
+
+  const names = Object.keys(templates);
+
+  const handleDelete = (name) => {
+    const updated = { ...templates };
+    delete updated[name];
+    localStorage.setItem("reconTemplates", JSON.stringify(updated));
+    setTemplates(updated);
+    if (selected === name) setSelected(null);
+  };
+
+  const handleRename = (oldName) => {
+    if (!newName.trim() || newName === oldName) { setRenaming(null); return; }
+    const updated = { ...templates };
+    updated[newName.trim()] = updated[oldName];
+    delete updated[oldName];
+    localStorage.setItem("reconTemplates", JSON.stringify(updated));
+    setTemplates(updated);
+    if (selected === oldName) setSelected(newName.trim());
+    setRenaming(null);
+    setNewName("");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+        <div className="modal-title">
+          <span>📂 Load Mapping Template</span>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>✕</button>
+        </div>
+
+        {names.length === 0 ? (
+          <div style={{ textAlign: "center", color: "var(--text3)", padding: "32px 0" }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
+            <div>No templates saved yet.</div>
+            <div style={{ fontSize: 12, marginTop: 6 }}>Save a mapping in Step 2 to create one.</div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            {names.map((name) => (
+              <div
+                key={name}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 14px",
+                  background: selected === name ? "rgba(79,142,247,.12)" : "var(--surface2)",
+                  border: `1px solid ${selected === name ? "var(--primary)" : "var(--border)"}`,
+                  borderRadius: 8, cursor: "pointer",
+                  transition: "all .15s",
+                }}
+                onClick={() => setSelected(name)}
+              >
+                {renaming === name ? (
+                  <input
+                    className="form-input"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleRename(name)}
+                    autoFocus
+                    style={{ flex: 1, padding: "4px 8px", fontSize: 13 }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontWeight: selected === name ? 600 : 400 }}>
+                    {selected === name ? "✓ " : ""}{name}
+                  </span>
+                )}
+                <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  {renaming === name ? (
+                    <>
+                      <button className="btn btn-sm btn-green" onClick={() => handleRename(name)}>Save</button>
+                      <button className="btn btn-sm btn-outline" onClick={() => setRenaming(null)}>✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => { setRenaming(name); setNewName(name); }}
+                        title="Rename"
+                      >✏️</button>
+                      <button
+                        className="btn btn-sm btn-red"
+                        onClick={() => handleDelete(name)}
+                        title="Delete"
+                      >🗑</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-blue"
+            disabled={!selected || !templates[selected]}
+            onClick={() => { onLoad(templates[selected]); onClose(); }}
+          >
+            Load Selected →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TestRun() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [srcFile, setSrcFile] = useState(null);
@@ -89,7 +205,7 @@ export default function TestRun() {
 
   const toggleRef = (side, col) => {
     setMapping((prev) => {
-      const refs = prev[side].references.includes(col)
+      const refs = (prev[side].references || []).includes(col)
         ? prev[side].references.filter((r) => r !== col)
         : [...prev[side].references, col];
       return { ...prev, [side]: { ...prev[side], references: refs } };
@@ -107,7 +223,7 @@ export default function TestRun() {
     if (!srcFile || !destFile) { setError("Select files first."); return; }
     if (!mapping.source.datetime || !mapping.dest.datetime) { setError("Select DateTime columns."); return; }
     if (!mapping.source.amount || !mapping.dest.amount) { setError("Select Amount columns."); return; }
-    if (!mapping.source.references.length || !mapping.dest.references.length) { setError("Select at least one Reference."); return; }
+    if (!(mapping.source.references || []).length || !(mapping.dest.references || []).length) { setError("Select at least one Reference."); return; }
 
     setLoading(true);
     setUploadProgress(0);
@@ -253,7 +369,7 @@ export default function TestRun() {
                   <div className="checkbox-group">
                     {uploadData.source_columns.map((c) => (
                       <label key={c} className="checkbox-item">
-                        <input type="checkbox" checked={mapping.source.references.includes(c)} onChange={() => toggleRef("source", c)} />
+                        <input type="checkbox" checked={(mapping.source.references || []).includes(c)} onChange={() => toggleRef("source", c)} />
                         {c}
                       </label>
                     ))}
@@ -287,7 +403,7 @@ export default function TestRun() {
                   <div className="checkbox-group">
                     {uploadData.dest_columns.map((c) => (
                       <label key={c} className="checkbox-item">
-                        <input type="checkbox" checked={mapping.dest.references.includes(c)} onChange={() => toggleRef("dest", c)} />
+                        <input type="checkbox" checked={(mapping.dest.references || []).includes(c)} onChange={() => toggleRef("dest", c)} />
                         {c}
                       </label>
                     ))}

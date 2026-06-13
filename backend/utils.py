@@ -83,7 +83,7 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
     df["amount_clean"] = pd.to_numeric(df["amount_clean"], errors="coerce")
 
     # ── 3. References cleaning ────────────────────────────────────────────
-    # IMPORTANT: do NOT lowercase — preserve original case, just strip whitespace
+    # Convert all references to UPPERCASE as requested
     for col in ref_cols:
         s = df[col].copy()
         # Convert floats that are integers (e.g. 12345.0 -> "12345")
@@ -91,7 +91,7 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
             lambda x: str(int(x)) if isinstance(x, float) and not pd.isna(x) and x == int(x)
             else (str(x).strip() if pd.notna(x) else "")
         )
-        df[col] = s.str.strip()
+        df[col] = s.str.strip().str.upper()
 
     # ── Drop rows where datetime or amount is null ─────────────────────────
     df = df.dropna(subset=["txn_datetime", "amount_clean"])

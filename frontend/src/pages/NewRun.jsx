@@ -302,7 +302,7 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
 
   const toggleRef = (side, col) => {
     setMapping((prev) => {
-      const refs = prev[side].references.includes(col)
+      const refs = (prev[side].references || []).includes(col)
         ? prev[side].references.filter((r) => r !== col)
         : [...prev[side].references, col];
       return { ...prev, [side]: { ...prev[side], references: refs } };
@@ -385,16 +385,16 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
               <label key={c} className="checkbox-item">
                 <input
                   type="checkbox"
-                  checked={mapping[side].references.includes(c)}
+                  checked={(mapping[side].references || []).includes(c)}
                   onChange={() => toggleRef(side, c)}
                 />
                 {c}
               </label>
             ))}
           </div>
-          {mapping[side].references.length > 0 && (
+          {(mapping[side].references || []).length > 0 && (
             <div className="helper-text" style={{ marginTop: 6 }}>
-              Selected: {mapping[side].references.join(", ")}
+              Selected: {(mapping[side].references || []).join(", ")}
             </div>
           )}
         </div>
