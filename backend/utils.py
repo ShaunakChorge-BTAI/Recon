@@ -12,25 +12,27 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
 
     Returns a list of dicts ready for DB insertion.
 
-    Mapping structure:
+    Mapping structure (updated to support per-side date formats):
     {
       "source": {
-          "datetime": "col",
-          "amount": "col",
-          "references": ["col1", ...],
-          "date_format": "%d/%m/%Y",   # optional, per-side override
-          "date_mode": "date"|"datetime"  # optional, per-side override
+        "datetime": "col",
+        "amount": "col",
+        "references": ["col1", ...],
+        "date_format": "%d/%m/%Y",   # optional, per-side override
+        "date_mode": "date"          # optional, per-side override
       },
       "dest": {
-          "datetime": "col",
-          "amount": "col",
-          "references": ["col1", ...],
-          "date_format": "%d/%m/%Y",   # optional, per-side override
-          "date_mode": "date"|"datetime"  # optional, per-side override
+        "datetime": "col",
+        "amount": "col",
+        "references": ["col1", ...],
+        "date_format": "%m/%d/%Y",   # can differ from source!
+        "date_mode": "datetime"
       },
       "date_mode": "date" | "datetime",   # global fallback, default "datetime"
-      "date_format": "%d/%m/%Y"           # global fallback, for ambiguous dates
+      "date_format": "%d/%m/%Y"           # global fallback, optional
     }
+
+    Per-side settings take priority over global settings.
     """
     m = mapping[side]
 
@@ -38,12 +40,10 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
     amount_col = m["amount"]
     ref_cols = m.get("references", [])
 
-    # Per-side date settings take priority over global settings
+    # Per-side date settings take priority over global fallbacks
+    # This allows source and destination to have different date formats
     date_mode = m.get("date_mode") or mapping.get("date_mode", "datetime")
     date_format = m.get("date_format") or mapping.get("date_format", None)
-    # Treat empty string as None (no format = auto-detect)
-    if not date_format:
-        date_format = None
 
     # All mapped columns
     all_mapped_cols = [date_col, amount_col] + ref_cols
@@ -96,7 +96,7 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
     # ── Drop rows where datetime or amount is null ─────────────────────────
     df = df.dropna(subset=["txn_datetime", "amount_clean"])
 
-    logger.info(f"[{side}] Cleaned rows: {len(df)} | date_mode={date_mode} | date_format={date_format or 'auto'}")
+    logger.info(f"[{side}] Cleaned rows: {len(df)}")
 
     # ── Build structured records ──────────────────────────────────────────
     records = []

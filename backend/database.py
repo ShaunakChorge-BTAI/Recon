@@ -14,28 +14,39 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Database URL resolution — NO SQLite fallback.
+# ── DATABASE CONNECTION ───────────────────────────────────────────────────────
+# We exclusively use PostgreSQL. The DATABASE_URL must be set in the .env file.
 #
-# Priority:
-#   1. DATABASE_URL env var (explicit override)
-#   2. PostgreSQL at the configured host (PG_URL env var or hardcoded default)
+# Personal PC .env:
+#   DATABASE_URL=postgresql+psycopg2://recon:recon@localhost:5432/recon_db_local
 #
-# SQLite fallback has been completely removed to ensure consistency across
-# machines and prevent stale local data accumulation.
-# ──────────────────────────────────────────────────────────────────────────────
-
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+# Work PC .env:
+#   DATABASE_URL=postgresql+psycopg2://recon:recon@192.168.202.135:5432/recon_db
+#
+# The .env file is gitignored — it never gets pushed to GitHub.
+# Both PCs run identical code; only the .env differs.
+# ─────────────────────────────────────────────────────────────────────────────
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if not DATABASE_URL:
-    # Use PostgreSQL exclusively
-    DATABASE_URL = os.environ.get(
-        "PG_URL",
-        "postgresql+psycopg2://recon:recon@192.168.202.135:5432/recon_db"
-    )
+    # Attempt to connect to the work server as a last resort
+    # (useful if running on work PC without a .env but with network access)
+    pg_url = "postgresql+psycopg2://recon:recon@192.168.202.135:5432/recon_db"
+    try:
+        temp_engine = create_engine(pg_url, pool_pre_ping=True, connect_args={"connect_timeout": 3})
+        with temp_engine.connect() as conn:
+            DATABASE_URL = pg_url
+        temp_engine.dispose()
+    except Exception:
+        # No .env and no network access to work server — fail loudly
+        raise RuntimeError(
+            "\n\nDATABASE_URL not configured.\n"
+            "Please create 'backend/.env' with:\n"
+            "  DATABASE_URL=postgresql+psycopg2://recon:recon@localhost:5432/recon_db_local\n"
+            "See Plan A (plan_postgres_install.md) for setup instructions.\n"
+        )
 
-connect_args = {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 Base = declarative_base()
@@ -95,8 +106,12 @@ class HistoryTable(Base):
     # Tolerance settings
     tol_amount = Column(Numeric(18, 4), nullable=False)
     tol_time_minutes = Column(Integer, nullable=False)
-    date_mode = Column(String, default="datetime")   # "date" or "datetime"
-    date_format = Column(String, nullable=True)       # e.g. "%d/%m/%Y"
+    date_mode = Column(String, default="datetime")    # "date" or "datetime" (global)
+    date_format = Column(String, nullable=True)        # global fallback e.g. "%d/%m/%Y"
+
+    # Per-side date formats (LP#1: source and dest can have different date formats)
+    date_format_source = Column(String, nullable=True)  # e.g. "%d/%m/%Y" for source file
+    date_format_dest = Column(String, nullable=True)    # e.g. "%m/%d/%Y" for dest file
 
     # Run counts
     total_source = Column(Integer, default=0)
@@ -169,16 +184,29 @@ class ExcludeRecord(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-    # Ensure existing DB has the `mapping_json` column in `history_table`.
-    # SQLAlchemy `create_all` does not add new columns to existing tables,
-    # so run a lightweight check-and-alter to add the column when missing.
+    # Lightweight migration: add any new columns that don't exist yet.
+    # SQLAlchemy create_all() only creates missing TABLES, not missing COLUMNS.
+    # We handle missing columns here to support upgrades without data loss.
     try:
         from sqlalchemy import inspect
         insp = inspect(engine)
-        cols = [c['name'] for c in insp.get_columns('history_table')] if 'history_table' in insp.get_table_names() else []
-        if 'mapping_json' not in cols:
+        table_names = insp.get_table_names()
+
+        if 'history_table' in table_names:
+            existing_cols = [c['name'] for c in insp.get_columns('history_table')]
+
+            # Columns to add if missing (name, SQL type)
+            new_cols = [
+                ('mapping_json', 'JSON'),
+                ('date_format_source', 'VARCHAR(100)'),
+                ('date_format_dest', 'VARCHAR(100)'),
+            ]
+
             with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE history_table ADD COLUMN mapping_json JSON"))
+                for col_name, col_type in new_cols:
+                    if col_name not in existing_cols:
+                        conn.execute(text(f"ALTER TABLE history_table ADD COLUMN {col_name} {col_type}"))
+
     except Exception:
         import traceback
         traceback.print_exc()

@@ -4,16 +4,10 @@ import axios from "axios";
 const BASE = "http://localhost:8000";
 
 const DATE_FORMATS = [
-  { label: "Auto Detect", value: "" },
   { label: "DD/MM/YYYY", value: "%d/%m/%Y" },
   { label: "MM/DD/YYYY", value: "%m/%d/%Y" },
   { label: "YYYY-MM-DD", value: "%Y-%m-%d" },
-  { label: "DD-MM-YYYY", value: "%d-%m-%Y" },
-  { label: "YYYY/MM/DD", value: "%Y/%m/%d" },
-  { label: "DD MMM YYYY", value: "%d %b %Y" },
-  { label: "DD/MM/YYYY HH:MM", value: "%d/%m/%Y %H:%M" },
-  { label: "MM/DD/YYYY HH:MM", value: "%m/%d/%Y %H:%M" },
-  { label: "YYYY-MM-DD HH:MM:SS", value: "%Y-%m-%d %H:%M:%S" },
+  { label: "Auto Detect", value: "" },
 ];
 
 const LAYER_INFO = [
@@ -25,15 +19,20 @@ const LAYER_INFO = [
   { name: "LLM Match", color: "var(--pink)" },
 ];
 
+// ─────────────────────────────────────────────────────────────────────
+// Template Picker Modal
+// Replaces the old browser prompt() with a proper styled UI.
+// Shows all saved templates as clickable cards with load/delete/rename.
+
 export default function TestRun() {
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [srcFile, setSrcFile] = useState(null);
   const [destFile, setDestFile] = useState(null);
   const [uploadData, setUploadData] = useState(null);
   const [mapping, setMapping] = useState({
-    source: { datetime: "", amount: "", references: [], date_format: "", date_mode: "datetime" },
-    dest: { datetime: "", amount: "", references: [], date_format: "", date_mode: "datetime" },
+    source: { datetime: "", amount: "", references: [], date_format: "" },
+    dest: { datetime: "", amount: "", references: [], date_format: "" },
     date_mode: "datetime",
-    date_format: "",
   });
   const [tolAmount, setTolAmount] = useState(10);
   const [tolTime, setTolTime] = useState(10);
@@ -76,18 +75,7 @@ export default function TestRun() {
   };
 
   const handleLoadTemplate = () => {
-    const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
-    const names = Object.keys(templates);
-    if (names.length === 0) {
-      alert("No templates saved yet.");
-      return;
-    }
-    const name = prompt(`Enter template name to load:\n${names.join(", ")}`);
-    if (name && templates[name]) {
-      setMapping(templates[name]);
-    } else if (name) {
-      alert("Template not found.");
-    }
+    setShowTemplatePicker(true);
   };
 
   const handleSaveTemplate = () => {
@@ -159,6 +147,8 @@ export default function TestRun() {
   };
 
   return (
+    <>
+      {showTemplatePicker && <TemplatePickerModal onLoad={(m) => setMapping(m)} onClose={() => setShowTemplatePicker(false)} />}
     <div>
       <div className="section-title">⚡ Test Reconciliation — No Database Write</div>
       <div className="alert alert-amber" style={{ marginBottom: 20 }}>
@@ -240,6 +230,18 @@ export default function TestRun() {
                   </select>
                 </div>
                 <div className="form-group">
+                  <label className="form-label">Date Format (Source)</label>
+                  <select className="form-select" value={mapping.source.date_format} onChange={(e) => handleChange("source", "date_format", e.target.value)}>
+                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Date Format (Dest)</label>
+                  <select className="form-select" value={mapping.dest.date_format} onChange={(e) => handleChange("dest", "date_format", e.target.value)}>
+                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
                   <label className="form-label">Amount</label>
                   <select className="form-select" value={mapping.source.amount} onChange={(e) => handleChange("source", "amount", e.target.value)}>
                     <option value="">— Select —</option>
@@ -256,22 +258,6 @@ export default function TestRun() {
                       </label>
                     ))}
                   </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">📅 Date Mode (Source)</label>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {["date", "datetime"].map((m) => (
-                      <button key={m} className={`btn btn-sm ${(mapping.source.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`} onClick={() => handleChange("source", "date_mode", m)}>
-                        {m === "date" ? "📅 Date" : "🕐 Datetime"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">🗓️ Date Format (Source)</label>
-                  <select className="form-select" value={mapping.source.date_format || ""} onChange={(e) => handleChange("source", "date_format", e.target.value)}>
-                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
                 </div>
               </div>
             </div>
@@ -307,22 +293,6 @@ export default function TestRun() {
                     ))}
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">📅 Date Mode (Destination)</label>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {["date", "datetime"].map((m) => (
-                      <button key={m} className={`btn btn-sm ${(mapping.dest.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`} onClick={() => handleChange("dest", "date_mode", m)}>
-                        {m === "date" ? "📅 Date" : "🕐 Datetime"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">🗓️ Date Format (Destination)</label>
-                  <select className="form-select" value={mapping.dest.date_format || ""} onChange={(e) => handleChange("dest", "date_format", e.target.value)}>
-                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
-                </div>
               </div>
             </div>
           </div>
@@ -333,7 +303,18 @@ export default function TestRun() {
       {uploadData && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-header"><span className="card-title">⚙️ Settings</span></div>
-          <div className="card-body" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div className="card-body" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+            <div className="form-group">
+              <label className="form-label">Date Mode</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {["date", "datetime"].map((m) => (
+                  <button key={m} className={`btn btn-sm ${mapping.date_mode === m ? "btn-blue" : "btn-outline"}`} onClick={() => setMapping(p => ({ ...p, date_mode: m }))}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
             <div className="form-group">
               <label className="form-label">Amount Tolerance</label>
               <input className="form-input" type="number" min={0} value={tolAmount} onChange={(e) => setTolAmount(e.target.value)} />
@@ -405,6 +386,8 @@ export default function TestRun() {
             {LAYER_INFO.map((l) => {
               const d = results.layers?.[l.name];
               return (
+    <>
+      {showTemplatePicker && <TemplatePickerModal onLoad={(m) => setMapping(m)} onClose={() => setShowTemplatePicker(false)} />}
                 <div key={l.name} className={`layer-card${d && d.count > 0 ? " done" : ""}`}>
                   <div className="layer-card-name">{l.name}</div>
                   <div className="layer-card-count" style={{ color: d?.count > 0 ? l.color : "var(--text3)" }}>
@@ -418,5 +401,6 @@ export default function TestRun() {
         </div>
       )}
     </div>
+    </>
   );
 }

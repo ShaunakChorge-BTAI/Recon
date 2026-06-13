@@ -1,4 +1,4 @@
-export default function Topbar({ title, sub, navigate, page, darkMode, toggleDark }) {
+export default function Topbar({ title, sub, navigate, page, isDark, onToggleTheme }) {
   return (
     <div className="topbar">
       <div>
@@ -17,15 +17,16 @@ export default function Topbar({ title, sub, navigate, page, darkMode, toggleDar
             ✦ New Run
           </button>
         )}
+
         {/* Dark / Light Mode Toggle */}
         <button
-          id="dark-mode-toggle"
+          id="theme-toggle-btn"
           className="btn btn-outline btn-sm"
-          onClick={toggleDark}
-          title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          style={{ fontSize: 16, padding: "4px 10px", minWidth: 36 }}
+          onClick={onToggleTheme}
+          title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          style={{ fontSize: 15, padding: "5px 10px", lineHeight: 1 }}
         >
-          {darkMode ? "☀️" : "🌙"}
+          {isDark ? "☀️" : "🌙"}
         </button>
       </div>
     </div>

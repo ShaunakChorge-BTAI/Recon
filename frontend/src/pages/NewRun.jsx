@@ -18,20 +18,140 @@ const DATE_FORMATS = [
   { label: "MM/DD/YYYY", value: "%m/%d/%Y" },
   { label: "YYYY-MM-DD", value: "%Y-%m-%d" },
   { label: "DD-MM-YYYY", value: "%d-%m-%Y" },
-  { label: "YYYY/MM/DD", value: "%Y/%m/%d" },
-  { label: "DD MMM YYYY", value: "%d %b %Y" },
-  { label: "DD/MM/YYYY HH:MM", value: "%d/%m/%Y %H:%M" },
-  { label: "MM/DD/YYYY HH:MM", value: "%m/%d/%Y %H:%M" },
-  { label: "YYYY-MM-DD HH:MM:SS", value: "%Y-%m-%d %H:%M:%S" },
+  { label: "DD/MM/YY", value: "%d/%m/%y" },
 ];
 
-// Step 1: File Upload
+// ─────────────────────────────────────────────────────────────────────
+// Template Picker Modal
+// Replaces the old browser prompt() with a proper styled UI.
+// Shows all saved templates as clickable cards with load/delete/rename.
+// ─────────────────────────────────────────────────────────────────────
+function TemplatePickerModal({ onLoad, onClose }) {
+  const [templates, setTemplates] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("reconTemplates") || "{}"); }
+    catch { return {}; }
+  });
+  const [selected, setSelected] = useState(null);
+  const [renaming, setRenaming] = useState(null); // name being renamed
+  const [newName, setNewName] = useState("");
+
+  const names = Object.keys(templates);
+
+  const handleDelete = (name) => {
+    const updated = { ...templates };
+    delete updated[name];
+    localStorage.setItem("reconTemplates", JSON.stringify(updated));
+    setTemplates(updated);
+    if (selected === name) setSelected(null);
+  };
+
+  const handleRename = (oldName) => {
+    if (!newName.trim() || newName === oldName) { setRenaming(null); return; }
+    const updated = { ...templates };
+    updated[newName.trim()] = updated[oldName];
+    delete updated[oldName];
+    localStorage.setItem("reconTemplates", JSON.stringify(updated));
+    setTemplates(updated);
+    if (selected === oldName) setSelected(newName.trim());
+    setRenaming(null);
+    setNewName("");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+        <div className="modal-title">
+          <span>📂 Load Mapping Template</span>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>✕</button>
+        </div>
+
+        {names.length === 0 ? (
+          <div style={{ textAlign: "center", color: "var(--text3)", padding: "32px 0" }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
+            <div>No templates saved yet.</div>
+            <div style={{ fontSize: 12, marginTop: 6 }}>Save a mapping in Step 2 to create one.</div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            {names.map((name) => (
+              <div
+                key={name}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 14px",
+                  background: selected === name ? "rgba(79,142,247,.12)" : "var(--surface2)",
+                  border: `1px solid ${selected === name ? "var(--primary)" : "var(--border)"}`,
+                  borderRadius: 8, cursor: "pointer",
+                  transition: "all .15s",
+                }}
+                onClick={() => setSelected(name)}
+              >
+                {renaming === name ? (
+                  <input
+                    className="form-input"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleRename(name)}
+                    autoFocus
+                    style={{ flex: 1, padding: "4px 8px", fontSize: 13 }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontWeight: selected === name ? 600 : 400 }}>
+                    {selected === name ? "✓ " : ""}{name}
+                  </span>
+                )}
+                <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  {renaming === name ? (
+                    <>
+                      <button className="btn btn-sm btn-green" onClick={() => handleRename(name)}>Save</button>
+                      <button className="btn btn-sm btn-outline" onClick={() => setRenaming(null)}>✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => { setRenaming(name); setNewName(name); }}
+                        title="Rename"
+                      >✏️</button>
+                      <button
+                        className="btn btn-sm btn-red"
+                        onClick={() => handleDelete(name)}
+                        title="Delete"
+                      >🗑</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-blue"
+            disabled={!selected || !templates[selected]}
+            onClick={() => { onLoad(templates[selected]); onClose(); }}
+          >
+            Load Selected →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Step 1: File Upload with per-file progress
 function StepUpload({ onDone }) {
   const [srcFile, setSrcFile] = useState(null);
   const [destFile, setDestFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [srcProgress, setSrcProgress] = useState(0); // per-file visual split
+  const [destProgress, setDestProgress] = useState(0);
+  const [phase, setPhase] = useState(""); // "uploading" | "reading" | ""
 
   const ACCEPT = ".xlsx,.xls,.csv,.txt,.pdf,.xml,.lin";
 
@@ -43,6 +163,15 @@ function StepUpload({ onDone }) {
     setError("");
     setLoading(true);
     setUploadProgress(0);
+    setSrcProgress(0);
+    setDestProgress(0);
+    setPhase("uploading");
+
+    // Estimate per-file share based on file size
+    const totalSize = srcFile.size + destFile.size;
+    const srcShare = totalSize > 0 ? srcFile.size / totalSize : 0.5;
+    const destShare = 1 - srcShare;
+
     try {
       const fd = new FormData();
       fd.append("source", srcFile);
@@ -50,17 +179,24 @@ function StepUpload({ onDone }) {
       const res = await axios.post(`${BASE}/upload`, fd, {
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(percentCompleted);
+            const pct = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(pct);
+            // Distribute progress proportionally to each file's size
+            setSrcProgress(Math.min(100, Math.round(pct / srcShare)));
+            setDestProgress(Math.min(100, Math.round(pct / destShare)));
           }
         }
       });
+      setPhase("reading");
       if (res.data.error) throw new Error(res.data.error);
+      setSrcProgress(100);
+      setDestProgress(100);
       onDone(res.data);
     } catch (e) {
       setError(e.response?.data?.error || e.message || "Upload failed");
     } finally {
       setLoading(false);
+      setPhase("");
     }
   };
 
@@ -88,6 +224,21 @@ function StepUpload({ onDone }) {
     </div>
   );
 
+  const FileProgressBar = ({ label, file, progress, color }) => {
+    if (!file || !loading) return null;
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text2)", marginBottom: 4 }}>
+          <span>{label}: <span style={{ color: "var(--text)" }}>{file.name}</span></span>
+          <span style={{ color }}>{phase === "reading" ? "Reading columns..." : `${Math.min(progress, 100)}%`}</span>
+        </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${phase === "reading" ? 100 : Math.min(progress, 100)}%`, background: color }} />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="section-title">Step 1 — Upload Files</div>
@@ -104,21 +255,13 @@ function StepUpload({ onDone }) {
 
       {error && <div className="alert alert-red" style={{ marginBottom: 12 }}>{error}</div>}
 
-      {loading && uploadProgress > 0 && uploadProgress < 100 && (
+      {loading && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
-            <span>Uploading files...</span>
-            <span>{uploadProgress}%</span>
-          </div>
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${uploadProgress}%` }} />
-          </div>
-        </div>
-      )}
-
-      {loading && uploadProgress === 100 && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: "var(--text2)" }}>
-          ⟳ Reading columns...
+          <FileProgressBar label="Source" file={srcFile} progress={srcProgress} color="var(--cyan)" />
+          <FileProgressBar label="Destination" file={destFile} progress={destProgress} color="var(--purple)" />
+          {phase === "reading" && (
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 8, textAlign: "center" }}>⟳ Reading column headers...</div>
+          )}
         </div>
       )}
 
@@ -131,7 +274,7 @@ function StepUpload({ onDone }) {
   );
 }
 
-// Step 2: Column Mapping
+// Step 2: Column Mapping with per-side date formats and template picker modal
 function StepMapping({ uploadData, onDone, initialMapping }) {
   const { source_columns: srcCols, dest_columns: destCols } = uploadData;
 
@@ -144,29 +287,17 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
 
   const [mapping, setMapping] = useState(initialMapping || defaultMapping);
   const [error, setError] = useState("");
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [saveNameInput, setSaveNameInput] = useState("");
+  const [showSaveInput, setShowSaveInput] = useState(false);
 
   const handleSaveTemplate = () => {
-    const name = prompt("Enter a name for this mapping template:");
-    if (!name) return;
+    if (!saveNameInput.trim()) return;
     const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
-    templates[name] = mapping;
+    templates[saveNameInput.trim()] = mapping;
     localStorage.setItem("reconTemplates", JSON.stringify(templates));
-    alert("Template saved!");
-  };
-
-  const handleLoadTemplate = () => {
-    const templates = JSON.parse(localStorage.getItem("reconTemplates") || "{}");
-    const names = Object.keys(templates);
-    if (names.length === 0) {
-      alert("No templates saved yet.");
-      return;
-    }
-    const name = prompt(`Enter template name to load:\n${names.join(", ")}`);
-    if (name && templates[name]) {
-      setMapping(templates[name]);
-    } else if (name) {
-      alert("Template not found.");
-    }
+    setSaveNameInput("");
+    setShowSaveInput(false);
   };
 
   const toggleRef = (side, col) => {
@@ -201,221 +332,137 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
     onDone(mapping);
   };
 
+  const SideCard = ({ side, cols, label, icon }) => (
+    <div className="card">
+      <div className="card-header">
+        <span style={{ fontSize: 14 }}>{icon}</span>
+        <span className="card-title">{label}</span>
+      </div>
+      <div className="card-body">
+        <div className="form-group">
+          <label className="form-label">📅 DateTime Column</label>
+          <select
+            className="form-select"
+            value={mapping[side].datetime}
+            onChange={(e) => handleChange(side, "datetime", e.target.value)}
+          >
+            <option value="">— Select —</option>
+            {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">💰 Amount Column</label>
+          <select
+            className="form-select"
+            value={mapping[side].amount}
+            onChange={(e) => handleChange(side, "amount", e.target.value)}
+          >
+            <option value="">— Select —</option>
+            {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Per-side date format — independent for source and destination */}
+        <div className="form-group">
+          <label className="form-label">📆 Date Format (this file)</label>
+          <select
+            className="form-select"
+            value={mapping[side].date_format ?? ""}
+            onChange={(e) => handleChange(side, "date_format", e.target.value)}
+          >
+            {DATE_FORMATS.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+          <div className="helper-text" style={{ marginTop: 4 }}>Can differ between source and destination</div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">🔗 Reference Columns (select all that apply)</label>
+          <div className="checkbox-group">
+            {cols.map((c) => (
+              <label key={c} className="checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={mapping[side].references.includes(c)}
+                  onChange={() => toggleRef(side, c)}
+                />
+                {c}
+              </label>
+            ))}
+          </div>
+          {mapping[side].references.length > 0 && (
+            <div className="helper-text" style={{ marginTop: 6 }}>
+              Selected: {mapping[side].references.join(", ")}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
-      <div className="section-title" style={{ display: "flex", justifyContent: "space-between" }}>
+      {showTemplatePicker && (
+        <TemplatePickerModal
+          onLoad={(t) => setMapping({ ...defaultMapping, ...t })}
+          onClose={() => setShowTemplatePicker(false)}
+        />
+      )}
+
+      <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span>Step 2 — Column Mapping</span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-outline btn-sm" onClick={handleLoadTemplate}>
-            📂 Load Template
-          </button>
-          <button className="btn btn-outline btn-sm" onClick={handleSaveTemplate}>
-            💾 Save Template
-          </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {showSaveInput ? (
+            <>
+              <input
+                className="form-input"
+                value={saveNameInput}
+                onChange={(e) => setSaveNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveTemplate()}
+                placeholder="Template name..."
+                autoFocus
+                style={{ width: 180, padding: "5px 10px", fontSize: 12 }}
+              />
+              <button className="btn btn-green btn-sm" onClick={handleSaveTemplate} disabled={!saveNameInput.trim()}>💾 Save</button>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowSaveInput(false)}>✕</button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowTemplatePicker(true)}>📂 Load Template</button>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowSaveInput(true)}>💾 Save Template</button>
+            </>
+          )}
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        {/* Source File */}
-        <div className="card">
-          <div className="card-header">
-            <span style={{ fontSize: 14 }}>📥</span>
-            <span className="card-title">Source File</span>
-          </div>
-          <div className="card-body">
-            <div className="form-group">
-              <label className="form-label">📅 DateTime Column</label>
-              <select
-                className="form-select"
-                value={mapping.source.datetime}
-                onChange={(e) => handleChange("source", "datetime", e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {srcCols.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">💰 Amount Column</label>
-              <select
-                className="form-select"
-                value={mapping.source.amount}
-                onChange={(e) => handleChange("source", "amount", e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {srcCols.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">🔗 Reference Columns (select all that apply)</label>
-              <div className="checkbox-group">
-                {srcCols.map((c) => (
-                  <label key={c} className="checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={mapping.source.references.includes(c)}
-                      onChange={() => toggleRef("source", c)}
-                    />
-                    {c}
-                  </label>
-                ))}
-              </div>
-              {mapping.source.references.length > 0 && (
-                <div className="helper-text" style={{ marginTop: 6 }}>
-                  Selected: {mapping.source.references.join(", ")}
-                </div>
-              )}
-            </div>
-
-            {/* Per-side date settings */}
-            <div className="form-group">
-              <label className="form-label">📅 Date Mode (Source)</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["date", "datetime"].map((m) => (
-                  <button
-                    key={m}
-                    className={`btn btn-sm ${(mapping.source.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`}
-                    onClick={() => handleChange("source", "date_mode", m)}
-                  >
-                    {m === "date" ? "📅 Date Only" : "🕐 Date+Time"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">🗓️ Date Format (Source)</label>
-              <select
-                className="form-select"
-                value={mapping.source.date_format || ""}
-                onChange={(e) => handleChange("source", "date_format", e.target.value)}
-              >
-                {DATE_FORMATS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Destination File */}
-        <div className="card">
-          <div className="card-header">
-            <span style={{ fontSize: 14 }}>📤</span>
-            <span className="card-title">Destination File</span>
-          </div>
-          <div className="card-body">
-            <div className="form-group">
-              <label className="form-label">📅 DateTime Column</label>
-              <select
-                className="form-select"
-                value={mapping.dest.datetime}
-                onChange={(e) => handleChange("dest", "datetime", e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {destCols.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">💰 Amount Column</label>
-              <select
-                className="form-select"
-                value={mapping.dest.amount}
-                onChange={(e) => handleChange("dest", "amount", e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {destCols.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">🔗 Reference Columns (select all that apply)</label>
-              <div className="checkbox-group">
-                {destCols.map((c) => (
-                  <label key={c} className="checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={mapping.dest.references.includes(c)}
-                      onChange={() => toggleRef("dest", c)}
-                    />
-                    {c}
-                  </label>
-                ))}
-              </div>
-              {mapping.dest.references.length > 0 && (
-                <div className="helper-text" style={{ marginTop: 6 }}>
-                  Selected: {mapping.dest.references.join(", ")}
-                </div>
-              )}
-            </div>
-
-            {/* Per-side date settings */}
-            <div className="form-group">
-              <label className="form-label">📅 Date Mode (Destination)</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["date", "datetime"].map((m) => (
-                  <button
-                    key={m}
-                    className={`btn btn-sm ${(mapping.dest.date_mode || "datetime") === m ? "btn-blue" : "btn-outline"}`}
-                    onClick={() => handleChange("dest", "date_mode", m)}
-                  >
-                    {m === "date" ? "📅 Date Only" : "🕐 Date+Time"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">🗓️ Date Format (Destination)</label>
-              <select
-                className="form-select"
-                value={mapping.dest.date_format || ""}
-                onChange={(e) => handleChange("dest", "date_format", e.target.value)}
-              >
-                {DATE_FORMATS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+        <SideCard side="source" cols={srcCols} label="Source File" icon="📥" />
+        <SideCard side="dest" cols={destCols} label="Destination File" icon="📤" />
       </div>
 
-      {/* Global date settings card replaced by per-side settings above */}
+      {/* Global Date Mode — applies to both sides */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">⚙️ Global Date Fallback (optional)</span>
+          <span className="card-title">⚙️ Date Type (applies to both files)</span>
         </div>
         <div className="card-body">
-          <div className="alert alert-blue" style={{ marginBottom: 12 }}>
-            ℹ️ Per-side settings above take priority. Use global settings as a fallback only.
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div className="form-group">
-              <label className="form-label">Global Date Type</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {["date", "datetime"].map((m) => (
-                  <button
-                    key={m}
-                    className={`btn btn-sm ${mapping.date_mode === m ? "btn-blue" : "btn-outline"}`}
-                    onClick={() => handleGlobal("date_mode", m)}
-                  >
-                    {m === "date" ? "📅 Date" : "🕐 Datetime"}
-                  </button>
-                ))}
-              </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Interpret dates as:</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["date", "datetime"].map((m) => (
+                <button
+                  key={m}
+                  className={`btn btn-sm ${mapping.date_mode === m ? "btn-blue" : "btn-outline"}`}
+                  onClick={() => handleGlobal("date_mode", m)}
+                >
+                  {m === "date" ? "📅 Date only" : "🕐 Date + Time"}
+                </button>
+              ))}
             </div>
-            <div className="form-group">
-              <label className="form-label">Global Date Format</label>
-              <select
-                className="form-select"
-                value={mapping.date_format}
-                onChange={(e) => handleGlobal("date_format", e.target.value)}
-              >
-                {DATE_FORMATS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
+            <div className="helper-text" style={{ marginTop: 6 }}>
+              Date only: ignores time component. Date + Time: uses time up to the minute.
             </div>
           </div>
         </div>
@@ -624,7 +671,6 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
   const [jobId, setJobId] = useState(null);
   const [error, setError] = useState("");
   const [cleaningProgress, setCleaningProgress] = useState(-1);
-  const [ingestTiming, setIngestTiming] = useState(null);
 
   // Update mapping if initialMapping changes
   useEffect(() => {
@@ -668,7 +714,6 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
   const handleRunStart = async ({ tolAmount, tolTime, mapping: mappingData }) => {
     setError("");
     setCleaningProgress(0);
-    setIngestTiming(null);
     let interval;
     try {
       interval = setInterval(() => {
@@ -680,16 +725,10 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
       ingestFd.append("source_upload_id", uploadData.source_upload_id);
       ingestFd.append("dest_upload_id", uploadData.dest_upload_id);
       ingestFd.append("mapping", JSON.stringify(mappingData));
-      const ingestRes = await axios.post(`${BASE}/ingest-mapped`, ingestFd);
+      await axios.post(`${BASE}/ingest-mapped`, ingestFd);
 
       clearInterval(interval);
-      interval = null;
       setCleaningProgress(100);
-
-      // Show real ingest timing from backend
-      if (ingestRes.data?.timing) {
-        setIngestTiming(ingestRes.data.timing);
-      }
 
       // 2. Start reconciliation
       const reconFd = new FormData();
@@ -742,41 +781,15 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
         <div className="card" style={{ marginTop: 20 }}>
           <div className="card-body">
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
-              <span>{cleaningProgress < 100 ? "⟳ Cleaning and ingesting data..." : "✓ Ingest complete!"}</span>
-              <span style={{ fontWeight: 700, color: cleaningProgress === 100 ? "var(--green)" : "var(--primary)" }}>
-                {cleaningProgress}%
-              </span>
+              <span>{cleaningProgress < 100 ? "Cleaning and ingesting data..." : "Done!"}</span>
+              <span>{cleaningProgress}%</span>
             </div>
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${cleaningProgress}%`, background: cleaningProgress === 100 ? "var(--green)" : undefined }} />
+              <div className="progress-fill" style={{ width: `${cleaningProgress}%` }} />
             </div>
-
-            {/* Show real per-side timing from backend */}
-            {ingestTiming && cleaningProgress === 100 && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                {["source", "dest"].map((side) => {
-                  const t = ingestTiming[side];
-                  if (!t) return null;
-                  return (
-                    <div key={side} style={{ background: "var(--surface2)", borderRadius: 8, padding: "10px 14px", border: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
-                        {side === "source" ? "📥 Source" : "📤 Destination"}
-                      </div>
-                      <div style={{ fontSize: 13, color: "var(--text2)" }}>
-                        <span style={{ color: "var(--primary)", fontWeight: 700 }}>{t.rows}</span> rows
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
-                        Read: {t.read_time_sec}s · Clean: {t.clean_time_sec}s · Total: {t.total_time_sec}s
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
       )}
-
 
       {step === 4 && jobId && (
         <StepTracking

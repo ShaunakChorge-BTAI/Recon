@@ -14,18 +14,22 @@ export default function App() {
   const [sourceUploadId, setSourceUploadId] = useState(null);
   const [destUploadId, setDestUploadId] = useState(null);
 
-  // Dark mode state — persisted in localStorage
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem("recon-theme") === "dark";
+  // ── Dark / Light Mode ────────────────────────────────────────────────
+  // Persisted in localStorage so preference survives page refresh.
+  // Applied to document.body via data-theme attribute so CSS variables
+  // in index.css can switch all colors instantly without JS-per-element.
+  const [isDark, setIsDark] = useState(() => {
+    const stored = localStorage.getItem("recon_theme");
+    return stored !== "light"; // default dark
   });
 
-  // Apply theme class to document root
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
-    localStorage.setItem("recon-theme", darkMode ? "dark" : "light");
-  }, [darkMode]);
+    document.body.setAttribute("data-theme", isDark ? "dark" : "light");
+    localStorage.setItem("recon_theme", isDark ? "dark" : "light");
+  }, [isDark]);
 
-  const toggleDark = () => setDarkMode((d) => !d);
+  const handleToggleTheme = () => setIsDark((prev) => !prev);
+  // ─────────────────────────────────────────────────────────────────────
 
   const navigate = (p, extras = {}) => {
     if (extras.runId !== undefined) setSelectedRunId(extras.runId);
@@ -61,8 +65,8 @@ export default function App() {
           sub={currentMeta.sub}
           navigate={navigate}
           page={page}
-          darkMode={darkMode}
-          toggleDark={toggleDark}
+          isDark={isDark}
+          onToggleTheme={handleToggleTheme}
         />
 
         <div className="page-content">

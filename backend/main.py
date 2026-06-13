@@ -234,36 +234,40 @@ def ingest_mapped(
     try:
         mapping_dict = json.loads(mapping)
 
-        timing = {}
-
         def ingest_one(upload_id: int, side: str):
             upload_rec = db.query(UploadedFile).filter(UploadedFile.id == upload_id).first()
             if not upload_rec:
                 raise Exception(f"Upload {upload_id} not found")
 
-            # ── CRITICAL FIX: Delete any existing records for this upload_id+side ──
-            # Without this, every rerun appends new rows causing doubled/multiplied counts.
+            t0 = time.time()
+            df = read_any_file(upload_rec.temp_path)
+            logger.info(f"[ingest] {side} full read: {len(df)} rows in {round(time.time()-t0,2)}s")
+
+            records = clean_mapped_dataframe(df, mapping_dict, side)
+            logger.info(f"[ingest] {side} cleaned: {len(records)} records")
+
+            # ── IDEMPOTENCY FIX ────────────────────────────────────────────────
+            # Delete any existing UnreconciledRecord rows for this upload_id before
+            # inserting new ones. This prevents row accumulation across multiple
+            # ingest calls (e.g. on "Edit & Rerun" or repeated runs with same files).
+            #
+            # WITHOUT this fix:
+            #   1st ingest → 37 rows inserted
+            #   2nd ingest → 37 more rows appended → 74 total (2× the data)
+            #   Matching engine gets 74 rows → produces ~2× the matches → wrong output
+            #
+            # WITH this fix:
+            #   1st ingest → 37 rows inserted
+            #   2nd ingest → 37 old rows deleted, 37 new rows inserted → still 37 total
+            #   Output is consistent regardless of how many times ingest is called.
             existing_count = db.query(UnreconciledRecord).filter(
                 UnreconciledRecord.upload_id == upload_id,
                 UnreconciledRecord.side == side,
-            ).count()
+            ).delete(synchronize_session=False)
+            db.commit()
             if existing_count > 0:
-                db.query(UnreconciledRecord).filter(
-                    UnreconciledRecord.upload_id == upload_id,
-                    UnreconciledRecord.side == side,
-                ).delete(synchronize_session=False)
-                db.flush()
-                logger.info(f"[ingest] {side} cleared {existing_count} stale records for upload_id={upload_id}")
-
-            t0 = time.time()
-            df = read_any_file(upload_rec.temp_path)
-            read_time = round(time.time() - t0, 2)
-            logger.info(f"[ingest] {side} full read: {len(df)} rows in {read_time}s")
-
-            t1 = time.time()
-            records = clean_mapped_dataframe(df, mapping_dict, side)
-            clean_time = round(time.time() - t1, 2)
-            logger.info(f"[ingest] {side} cleaned: {len(records)} records in {clean_time}s")
+                logger.info(f"[ingest] {side} cleared {existing_count} stale rows for upload_id={upload_id}")
+            # ──────────────────────────────────────────────────────────────────
 
             db_rows = []
             for rec in records:
@@ -284,13 +288,6 @@ def ingest_mapped(
             db.commit()
             logger.info(f"[ingest] {side} inserted {len(db_rows)} records")
 
-            timing[side] = {
-                "rows": len(db_rows),
-                "read_time_sec": read_time,
-                "clean_time_sec": clean_time,
-                "total_time_sec": round(time.time() - t0, 2),
-            }
-
             with open("logs.txt", "a") as f:
                 f.write(f"\n\n=== {side.upper()} DATAFRAME ===\n")
                 f.write(pd.DataFrame(records).to_string() + "\n")
@@ -302,7 +299,7 @@ def ingest_mapped(
         ingest_one(source_upload_id, "source")
         ingest_one(dest_upload_id, "dest")
 
-        return {"status": "mapped", "timing": timing}
+        return {"status": "mapped"}
     except Exception as e:
         logger.error(f"[ingest-mapped] Error: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -539,8 +536,11 @@ def reconcile_async(
             tol_time_minutes=tol_time,
             date_mode=mapping_dict.get("date_mode", "datetime"),
             date_format=mapping_dict.get("date_format"),
+            date_format_source=mapping_dict.get("source", {}).get("date_format"),
+            date_format_dest=mapping_dict.get("dest", {}).get("date_format"),
             status="running",
             mapping_json=mapping_dict,
+
         )
         db.add(run)
         db.commit()
