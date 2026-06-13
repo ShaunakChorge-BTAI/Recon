@@ -352,12 +352,6 @@ export default function TestRun() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Date Format (Dest)</label>
-                  <select className="form-select" value={mapping.dest.date_format} onChange={(e) => handleChange("dest", "date_format", e.target.value)}>
-                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
                   <label className="form-label">Amount</label>
                   <select className="form-select" value={mapping.source.amount} onChange={(e) => handleChange("source", "amount", e.target.value)}>
                     <option value="">— Select —</option>
@@ -389,6 +383,12 @@ export default function TestRun() {
                   <select className="form-select" value={mapping.dest.datetime} onChange={(e) => handleChange("dest", "datetime", e.target.value)}>
                     <option value="">— Select —</option>
                     {uploadData.dest_columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Date Format (Dest)</label>
+                  <select className="form-select" value={mapping.dest.date_format} onChange={(e) => handleChange("dest", "date_format", e.target.value)}>
+                    {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                   </select>
                 </div>
                 <div className="form-group">

@@ -12,18 +12,20 @@ dest_df = pd.read_excel(dest_file)
 
 src_df['datetime'] = pd.to_datetime(src_df['Modified_DateTime'], errors='coerce')
 src_df['amount'] = pd.to_numeric(src_df['CASHIER_CREDIT'], errors='coerce').fillna(0)
-src_df['ref_Modified_Card'] = src_df['Modified_Card'].astype(str)
+src_df['ref_1'] = src_df['CREDIT_CARD_SUPPLEMENT'].astype(str)
+src_df['ref_2'] = src_df['Modified_Card'].astype(str)
 
 dest_df['datetime'] = pd.to_datetime(dest_df['Modified_DateTime'], errors='coerce')
 dest_df['amount'] = pd.to_numeric(dest_df['Net Amount'], errors='coerce').fillna(0)
-dest_df['ref_Modified_Card'] = dest_df['Modified_Card'].astype(str)
+dest_df['ref_1'] = dest_df['Modified_Card'].astype(str)
+dest_df['ref_2'] = dest_df['Transaction_Description'].astype(str)
 
 for df in [src_df, dest_df]:
     df['row_id'] = range(len(df))
 
 mapping = {
-    "source": {"references": ["ref_Modified_Card"]},
-    "dest": {"references": ["ref_Modified_Card"]}
+    "source": {"references": ["ref_1", "ref_2"]},
+    "dest": {"references": ["ref_1", "ref_2"]}
 }
 engine = MatchingEngine(tol_amount=10, tol_time=10, mapping=mapping) # 10 mins
 

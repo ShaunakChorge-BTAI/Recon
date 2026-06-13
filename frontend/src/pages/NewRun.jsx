@@ -332,7 +332,7 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
     onDone(mapping);
   };
 
-  const SideCard = ({ side, cols, label, icon }) => (
+  const renderSideCard = (side, cols, label, icon) => (
     <div className="card">
       <div className="card-header">
         <span style={{ fontSize: 14 }}>{icon}</span>
@@ -438,8 +438,8 @@ function StepMapping({ uploadData, onDone, initialMapping }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        <SideCard side="source" cols={srcCols} label="Source File" icon="📥" />
-        <SideCard side="dest" cols={destCols} label="Destination File" icon="📤" />
+        {renderSideCard("source", srcCols, "Source File", "📥")}
+        {renderSideCard("dest", destCols, "Destination File", "📤")}
       </div>
 
       {/* Global Date Mode — applies to both sides */}

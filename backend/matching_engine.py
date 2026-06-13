@@ -118,6 +118,13 @@ class MatchingEngine:
         if "amount" in df.columns:
             df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
 
+        # Create order-independent composite reference key
+        # We sort the values so that column selection order doesn't matter.
+        df["_ref_key"] = df[ref_cols].apply(
+            lambda row: tuple(sorted([str(v).strip().upper() for c, v in row.items() if c in ref_cols and pd.notna(v) and str(v).strip() != ""])),
+            axis=1
+        )
+
         # Define which columns must be non-null for a record to participate in matching
         needed = list(ref_cols) + ["datetime", "amount"]
         needed = [c for c in needed if c in df.columns]
@@ -129,24 +136,8 @@ class MatchingEngine:
         return df
 
     def _rename_dest_refs(self, dest: pd.DataFrame) -> pd.DataFrame:
-        """
-        Rename destination reference columns to match source reference column names.
-
-        WHY: Source and destination files often have different column names for the
-        same business field (e.g. "Payment_Ref" vs "Transaction_Reference").
-        The column mapping defines which dest col corresponds to which src col.
-        After renaming, all join/comparison logic can use src_refs column names
-        for both DataFrames.
-
-        Example:
-          src_refs  = ["TxnRef", "AccountNo"]
-          dest_refs = ["Reference", "Account"]
-          → dest["Reference"] renamed to "TxnRef"
-          → dest["Account"]   renamed to "AccountNo"
-        """
-        rename_map = dict(zip(self.dest_refs, self.src_refs))
-        return dest.rename(columns=rename_map)
-
+        # No longer needed since we use order-independent _ref_key
+        return dest
     def _make_json_safe(self, df: pd.DataFrame):
         """
         Convert a DataFrame to a list of dicts safe for JSON serialization.
@@ -268,7 +259,7 @@ Return [] if no match.
     # ============================================================
     def layer0_self_knock(self, df: pd.DataFrame):
         logging.info(f"Layer 0 (Self Knock) started with {len(df)} rows")
-        group_cols = self.src_refs + ["datetime"]
+        group_cols = ["_ref_key", "datetime"]
 
         df_clean = self._prepare_df(df, self.src_refs)
 
@@ -354,7 +345,7 @@ Return [] if no match.
         dest_work = self._rename_dest_refs(dest_work)
 
         # The exact match key: all refs + datetime + amount
-        cols = self.src_refs + ["datetime", "amount"]
+        cols = ["_ref_key", "datetime", "amount"]
 
         # Build hash-maps for O(n) lookup instead of O(n²) nested loops
         src_grouped = {}
@@ -423,7 +414,7 @@ Return [] if no match.
         # Pre-build destination lookup grouped by reference key
         # Within each group, sort by amount for binary search
         dest_groups = {}
-        for ref_key, grp in dest_work.groupby(self.src_refs, observed=True, sort=False):
+        for ref_key, grp in dest_work.groupby(["_ref_key"], observed=True, sort=False):
             ref_key = self._normalize_ref_key(ref_key)
             grp2 = grp.sort_values("amount").reset_index(drop=True).copy()
             grp2["_amount_np"] = grp2["amount"].to_numpy()  # numpy array for searchsorted
@@ -431,7 +422,7 @@ Return [] if no match.
 
         matches = []
 
-        for ref_key, s_grp in src_work.groupby(self.src_refs, observed=True, sort=False):
+        for ref_key, s_grp in src_work.groupby(["_ref_key"], observed=True, sort=False):
             ref_key = self._normalize_ref_key(ref_key)
 
             d_grp = dest_groups.get(ref_key)
@@ -522,7 +513,7 @@ Return [] if no match.
         if src_work.empty or dest_work.empty:
             return pd.DataFrame()
 
-        cols = self.src_refs   # Reference columns used as group key
+        cols = ["_ref_key"]
         dest_work = self._rename_dest_refs(dest_work)
 
         # ── Step 1: Group SOURCE by ref_cols ──────────────────────────────
@@ -762,7 +753,7 @@ Return [] if no match.
 
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=30.0)
 
-        use_src_cols = self.src_refs + ["datetime", "amount"]
+        use_src_cols = ["_ref_key", "datetime", "amount"]
         use_dest_cols = self.dest_refs + ["datetime", "amount"]
 
         src_work = self._prepare_df(src, self.src_refs)
