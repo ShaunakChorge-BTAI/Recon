@@ -156,9 +156,10 @@ export default function TestRun() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState("");
+  const [cleaningProgress, setCleaningProgress] = useState(-1);
+  const [statusMsg, setStatusMsg] = useState("");
 
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [cleaningProgress, setCleaningProgress] = useState(-1);
 
   const ACCEPT = ".xlsx,.xls,.csv,.txt,.pdf,.xml,.lin";
 
@@ -228,12 +229,19 @@ export default function TestRun() {
     setLoading(true);
     setUploadProgress(0);
     setCleaningProgress(0);
-    let interval;
-    try {
-      interval = setInterval(() => {
-        setCleaningProgress((p) => (p < 90 ? p + Math.floor(Math.random() * 15) : p));
-      }, 600);
+    setStatusMsg("Starting run...");
+    
+    const clientId = Math.random().toString(36).substring(7);
+    const ws = new WebSocket(`ws://localhost:8000/ws/progress/${clientId}`);
+    ws.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.progress !== undefined) setCleaningProgress(data.progress);
+        if (data.status) setStatusMsg(data.status);
+      } catch (err) {}
+    };
 
+    try {
       const timeInMinutes = tolUnit === "days" ? tolTime * 24 * 60 : Number(tolTime);
       const fd = new FormData();
       fd.append("source", srcFile);
@@ -241,6 +249,7 @@ export default function TestRun() {
       fd.append("mapping", JSON.stringify(mapping));
       fd.append("tol_amount", tolAmount);
       fd.append("tol_time", timeInMinutes);
+      fd.append("client_id", clientId);
 
       const res = await axios.post(`${BASE}/test-reconcile`, fd, {
         onUploadProgress: (e) => {
@@ -249,12 +258,13 @@ export default function TestRun() {
           }
         }
       });
-      clearInterval(interval);
+      ws.close();
       setCleaningProgress(100);
+      setStatusMsg("Done!");
       setResults(res.data);
-      setCleaningProgress(-1);
+      setTimeout(() => setCleaningProgress(-1), 2000);
     } catch (e) {
-      if (interval) clearInterval(interval);
+      ws.close();
       setCleaningProgress(-1);
       setError(e.response?.data?.error || e.message || "Test failed");
     } finally {
@@ -461,7 +471,7 @@ export default function TestRun() {
         <div className="card" style={{ marginTop: 20 }}>
           <div className="card-body">
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
-              <span>{cleaningProgress < 100 ? "Cleaning and ingesting data..." : "Done!"}</span>
+              <span>{statusMsg || "Processing data..."}</span>
               <span>{cleaningProgress}%</span>
             </div>
             <div className="progress-bar">

@@ -671,6 +671,7 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
   const [jobId, setJobId] = useState(null);
   const [error, setError] = useState("");
   const [cleaningProgress, setCleaningProgress] = useState(-1);
+  const [statusMsg, setStatusMsg] = useState("");
 
   // Update mapping if initialMapping changes
   useEffect(() => {
@@ -714,21 +715,30 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
   const handleRunStart = async ({ tolAmount, tolTime, mapping: mappingData }) => {
     setError("");
     setCleaningProgress(0);
-    let interval;
-    try {
-      interval = setInterval(() => {
-        setCleaningProgress((p) => (p < 90 ? p + Math.floor(Math.random() * 15) : p));
-      }, 600);
+    setStatusMsg("Starting ingestion...");
 
+    const clientId = Math.random().toString(36).substring(7);
+    const ws = new WebSocket(`ws://localhost:8000/ws/progress/${clientId}`);
+    ws.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.progress !== undefined) setCleaningProgress(data.progress);
+        if (data.status) setStatusMsg(data.status);
+      } catch (err) {}
+    };
+
+    try {
       // 1. Ingest
       const ingestFd = new FormData();
       ingestFd.append("source_upload_id", uploadData.source_upload_id);
       ingestFd.append("dest_upload_id", uploadData.dest_upload_id);
       ingestFd.append("mapping", JSON.stringify(mappingData));
+      ingestFd.append("client_id", clientId);
       await axios.post(`${BASE}/ingest-mapped`, ingestFd);
 
-      clearInterval(interval);
+      ws.close();
       setCleaningProgress(100);
+      setStatusMsg("Ingestion done!");
 
       // 2. Start reconciliation
       const reconFd = new FormData();
@@ -742,7 +752,7 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
       setStep(4);
       setCleaningProgress(-1);
     } catch (e) {
-      if (interval) clearInterval(interval);
+      ws.close();
       setCleaningProgress(-1);
       setError(e.response?.data?.error || e.message || "Failed to start reconciliation");
     }
@@ -778,10 +788,10 @@ export default function NewRun({ navigate, initialMapping, initialSourceUploadId
       )}
 
       {cleaningProgress >= 0 && (
-        <div className="card" style={{ marginTop: 20 }}>
+        <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-body">
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text2)" }}>
-              <span>{cleaningProgress < 100 ? "Cleaning and ingesting data..." : "Done!"}</span>
+              <span>{statusMsg || "Ingesting data..."}</span>
               <span>{cleaningProgress}%</span>
             </div>
             <div className="progress-bar">

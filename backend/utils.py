@@ -6,7 +6,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
+def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str, progress_cb=None) -> list:
     """
     Clean and format a raw DataFrame using the provided column mapping.
 
@@ -35,6 +35,9 @@ def clean_mapped_dataframe(df: pd.DataFrame, mapping: dict, side: str) -> list:
     Per-side settings take priority over global settings.
     """
     m = mapping[side]
+    
+    if progress_cb:
+        progress_cb(f"Cleaning {side} dataframe...", 15 if side == "source" else 30)
 
     date_col = m["datetime"]
     amount_col = m["amount"]

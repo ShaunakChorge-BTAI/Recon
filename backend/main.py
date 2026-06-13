@@ -229,10 +229,12 @@ def ingest_mapped(
     source_upload_id: int = Form(...),
     dest_upload_id: int = Form(...),
     mapping: str = Form(...),
+    client_id: str = Form(None),
 ):
     db = SessionLocal()
     try:
         mapping_dict = json.loads(mapping)
+        prog = lambda msg, pct: push_progress(client_id, {"status": msg, "progress": pct}) if client_id else None
 
         def ingest_one(upload_id: int, side: str):
             upload_rec = db.query(UploadedFile).filter(UploadedFile.id == upload_id).first()
@@ -240,10 +242,11 @@ def ingest_mapped(
                 raise Exception(f"Upload {upload_id} not found")
 
             t0 = time.time()
+            if prog: prog(f"Reading {side} file...", 5 if side == "source" else 55)
             df = read_any_file(upload_rec.temp_path)
             logger.info(f"[ingest] {side} full read: {len(df)} rows in {round(time.time()-t0,2)}s")
 
-            records = clean_mapped_dataframe(df, mapping_dict, side)
+            records = clean_mapped_dataframe(df, mapping_dict, side, progress_cb=prog)
             logger.info(f"[ingest] {side} cleaned: {len(records)} records")
 
             # ── IDEMPOTENCY FIX ────────────────────────────────────────────────
@@ -571,70 +574,79 @@ async def test_reconcile(
     mapping: str = Form(...),
     tol_amount: float = Form(...),
     tol_time: int = Form(...),
+    client_id: str = Form(None),
 ):
     try:
         mapping_dict = json.loads(mapping)
+        src_filename = source.filename
+        dest_filename = dest.filename
 
-        def parse_bytes(filename, content):
-            ext = os.path.splitext(filename)[1].lower()
-            # Write to temp file so parsers.py can handle all formats
-            tmp_path = os.path.join(UPLOAD_DIR, f"test_{uuid.uuid4().hex}{ext}")
-            with open(tmp_path, "wb") as f:
-                f.write(content)
-            try:
-                df = read_any_file(tmp_path)
-            finally:
+        def run_heavy_lifting(src_bytes, dest_bytes, mapping_dict, tol_amount, tol_time, client_id):
+            def parse_bytes(filename, content):
+                ext = os.path.splitext(filename)[1].lower()
+                tmp_path = os.path.join(UPLOAD_DIR, f"test_{uuid.uuid4().hex}{ext}")
+                with open(tmp_path, "wb") as f:
+                    f.write(content)
                 try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
-            return df
+                    df = read_any_file(tmp_path)
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+                return df
+
+            prog = lambda msg, pct: push_progress(client_id, {"status": msg, "progress": pct}) if client_id else None
+
+            if prog: prog("Parsing source file...", 5)
+            src_df_raw = parse_bytes(src_filename, src_bytes)
+            
+            if prog: prog("Parsing destination file...", 10)
+            dest_df_raw = parse_bytes(dest_filename, dest_bytes)
+
+            src_records = clean_mapped_dataframe(src_df_raw, mapping_dict, "source", progress_cb=prog)
+            dest_records = clean_mapped_dataframe(dest_df_raw, mapping_dict, "dest", progress_cb=prog)
+
+            def recs_to_df(records):
+                rows = []
+                for i, r in enumerate(records):
+                    row = {
+                        "record_id": i,
+                        "datetime": r["txn_datetime"],
+                        "amount": r["amount"],
+                        **r["references"],
+                    }
+                    rows.append(row)
+                return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+            if prog: prog("Preparing engine...", 35)
+            src_df = recs_to_df(src_records)
+            dest_df = recs_to_df(dest_records)
+
+            engine = MatchingEngine(tol_amount, tol_time, mapping_dict)
+            
+            cb = lambda payload: push_progress(client_id, payload) if client_id else None
+            result = engine.run_all_layers(src_df, dest_df, skip_llm=True, progress_callback=cb)
+
+            summary = {
+                "total_source": len(src_df),
+                "total_dest": len(dest_df),
+                "total_matched": result["total_matched"],
+                "total_unmatched_src": len(result["unmatched_src"]),
+                "total_unmatched_dest": len(result["unmatched_dest"]),
+                "layers": {
+                    name: {"count": data["count"], "time_sec": data["time_sec"]}
+                    for name, data in result["layers"].items()
+                },
+            }
+            return summary
 
         src_content = await source.read()
         dest_content = await dest.read()
 
-        src_df_raw = parse_bytes(source.filename, src_content)
-        dest_df_raw = parse_bytes(dest.filename, dest_content)
-
-        src_records = clean_mapped_dataframe(src_df_raw, mapping_dict, "source")
-        dest_records = clean_mapped_dataframe(dest_df_raw, mapping_dict, "dest")
-
-        def recs_to_df(records):
-            rows = []
-            for i, r in enumerate(records):
-                row = {
-                    "record_id": i,
-                    "datetime": r["txn_datetime"],
-                    "amount": r["amount"],
-                    **r["references"],
-                }
-                rows.append(row)
-            return pd.DataFrame(rows) if rows else pd.DataFrame()
-
-        src_df = recs_to_df(src_records)
-        dest_df = recs_to_df(dest_records)
-
-        with open("logs.txt", "w") as f:
-            f.write(f"--- Test Reconcile at {datetime.now()} ---\n")
-            f.write(f"\n\n=== SOURCE DATAFRAME ===\n")
-            f.write(src_df.to_string() + "\n")
-            f.write(f"\n\n=== DEST DATAFRAME ===\n")
-            f.write(dest_df.to_string() + "\n")
-
-        engine = MatchingEngine(tol_amount, tol_time, mapping_dict)
-        result = engine.run_all_layers(src_df, dest_df, skip_llm=True)
-
-        summary = {
-            "total_source": len(src_df),
-            "total_dest": len(dest_df),
-            "total_matched": result["total_matched"],
-            "total_unmatched_src": len(result["unmatched_src"]),
-            "total_unmatched_dest": len(result["unmatched_dest"]),
-            "layers": {
-                name: {"count": data["count"], "time_sec": data["time_sec"]}
-                for name, data in result["layers"].items()
-            },
-        }
+        summary = await asyncio.to_thread(
+            run_heavy_lifting, src_content, dest_content, mapping_dict, tol_amount, tol_time, client_id
+        )
 
         return summary
 
